@@ -54,7 +54,6 @@ public class PanicFleeGoal extends Goal {
 
     /**
      * Kan målet starte? Kun hvis mob'en er i panik-tilstand og kender angriber-positionen.
-     *
      * isPanicking sættes til true i ChestThiefEntity.provoke() med 60% sandsynlighed.
      */
     @Override
@@ -108,7 +107,6 @@ public class PanicFleeGoal extends Goal {
 
     /**
      * Beregner en position væk fra angriberen og navigerer derhen i sprint-tempo.
-     *
      * Bruger DefaultRandomPos.getPosAway() som finder et tilfældigt gangbart punkt
      * i retningen væk fra den angivne position (op til 16 blokke horisontalt, 7 vertikalt).
      * Hastighed 1.5 = sprint (normal hastighed er 1.0).
@@ -126,10 +124,8 @@ public class PanicFleeGoal extends Goal {
 
     /**
      * Dropper ét tilfældig item fra mob'ens beholdning på mob'ens nuværende position.
-     *
      * Finder alle ikke-tomme slots, vælger en tilfældig af dem og dropper den stack.
      * Slottet ryddes bagefter. Hvis beholdningen er tom, sker der ingenting.
-     *
      * Items kan kun droppes server-side, så metoden er no-op på klientsiden.
      */
     private void dropOneCarriedItem() {

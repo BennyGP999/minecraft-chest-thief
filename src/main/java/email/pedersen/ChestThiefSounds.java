@@ -46,7 +46,6 @@ public class ChestThiefSounds {
      * Registrerer et SoundEvent med det givne navn i Minecrafts lyd-register.
      * Identifier-formatet "chest_thief:<navn>" svarer til indgangen i sounds.json
      * og til lydfilen assets/chest_thief/sounds/<navn>.ogg.
-     *
      * @param name lydnavnet, f.eks. "open_chest"
      * @return det registrerede SoundEvent-objekt
      */

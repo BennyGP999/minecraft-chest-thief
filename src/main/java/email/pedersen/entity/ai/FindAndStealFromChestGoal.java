@@ -1,7 +1,6 @@
 package email.pedersen.entity.ai;
 
 import email.pedersen.ChestCoordinator;
-import email.pedersen.ChestThiefMod;
 import email.pedersen.ChestTracker;
 import email.pedersen.config.ChestThiefConfig;
 import email.pedersen.entity.ChestThiefEntity;
@@ -188,10 +187,8 @@ public class FindAndStealFromChestGoal extends Goal {
 
     /**
      * SEARCHING-tilstand: Find den nærmeste kiste og sæt kurs mod den.
-     *
      * Søger ikke hvert tick — venter 40 ticks (2 sekunder) mellem søgninger,
      * da det er unødvendigt at søge oftere.
-     *
      * Logik:
      *   1. Byg en liste over kister vi vil undgå (udtømte + andre mobs' krav)
      *   2. Spørg ChestTracker om den nærmeste kiste uden for listen
@@ -244,6 +241,11 @@ public class FindAndStealFromChestGoal extends Goal {
             // Løsning: start en kort tilfældig vandring selv. Mob'en ser naturlig ud,
             // og lookupCooldown sørger for at vi tjekker igen om 2 sekunder.
             if (mob.getNavigation().isDone()) {
+                // Vælg en tilfældig retning (0–2π radianer = fuld cirkel) og en afstand (6–14 blokke).
+                // Polær-til-kartesisk konvertering: angle er vinklen fra X-aksen i XZ-planet,
+                //   tx = mob.getX() + cos(angle) * dist  →  X-komponenten af målpositionen
+                //   tz = mob.getZ() + sin(angle) * dist  →  Z-komponenten af målpositionen
+                // Det giver et jævnt fordelt punkt på en ring rundt om mob'en.
                 double angle = mob.getRandom().nextDouble() * 2 * Math.PI;
                 double dist = 6 + mob.getRandom().nextDouble() * 8; // 6–14 blokke væk
                 double tx = mob.getX() + Math.cos(angle) * dist;
@@ -255,12 +257,10 @@ public class FindAndStealFromChestGoal extends Goal {
 
     /**
      * MOVING-tilstand: Gå hen mod kisten.
-     *
      * Tjekker løbende:
      *   - At kisten stadig eksisterer (kan være ødelagt undervejs)
      *   - Om mob'en er nær nok til at interagere (distancen i blokke²)
      *   - Om navigationen er gået i stå (re-path i så fald)
-     *
      * Distancer er kvadrerede (distSq) for at undgå kvadratrod-beregning (hurtigere).
      *   distSq ≤ 4.0  = inden for 2 blokke = nær nok til at interagere
      *   distSq ≤ 16.0 = inden for 4 blokke = tæt nok til at registrere krav
@@ -489,7 +489,6 @@ public class FindAndStealFromChestGoal extends Goal {
 
     /**
      * STEALING-tilstand: Stjæl items fra kisten med jævne mellemrum.
-     *
      * Håndterer:
      *   - Leash: Mob er i snor → luk kisten og gå til SEARCHING (ingen stjæleri)
      *   - Validering: Kisten er væk → gå til SEARCHING
@@ -573,13 +572,11 @@ public class FindAndStealFromChestGoal extends Goal {
     /**
      * Navigerer mob'en mod den horisontale naboretning til kisten der er tættest
      * på mob'ens nuværende position.
-     *
      * Hvorfor IKKE kistens centrum:
      *   moveTo(chestX, chestY, chestZ) med accuracy=1 lader pathfinderen acceptere
      *   enhver node inden for 1 blok af kisten — inklusiv toppen. Pathfinderen kan
      *   vælge toppen som den "billigste" node (f.eks. hvis kisten er i et hjørne),
      *   og mob'en ender på toppen i stedet for foran.
-     *
      * Hvorfor nærmeste side (ikke kistens FACING):
      *   I en labyrint ankommer mob'en fra den side labyrinten tillader. Hvis vi
      *   naviger mod kistens forside (FACING), kan pathfinderen prøve at rute
@@ -587,7 +584,6 @@ public class FindAndStealFromChestGoal extends Goal {
      *   i stedet den tilgængelige naboretning der er tættest på mob'ens
      *   nuværende position, og re-beregner den ved hvert kald (mob'ens position
      *   ændrer sig mens den navigerer labyrinten).
-     *
      * Fallback: hvis ingen horisontal nabo er gangbar (kisten er omgivet), lader
      * vi pathfinderen finde vejen selv som før.
      */
@@ -601,7 +597,10 @@ public class FindAndStealFromChestGoal extends Goal {
 
         for (Direction dir : Direction.Plane.HORIZONTAL) {
             BlockPos adj = targetChest.relative(dir);
-            // Gangbarhedstjek: fri plads til fødder og hoved, fast underlag
+            // Tre-lags gangbarhedstjek — alle tre skal bestå:
+            //   adj         (fødder)  — selve blokken må ikke have kollisionform (ikke solid)
+            //   adj.above() (hoved)   — blokken over fødder skal også være fri (mob er 2 blokke høj)
+            //   adj.below() (underlag)— blokken under fødder skal have fast overside (noget at stå på)
             if (!level.getBlockState(adj).getCollisionShape(level, adj).isEmpty()) continue;
             if (!level.getBlockState(adj.above()).getCollisionShape(level, adj.above()).isEmpty()) continue;
             if (!level.getBlockState(adj.below()).isFaceSturdy(level, adj.below(), Direction.UP)) continue;
@@ -643,30 +642,24 @@ public class FindAndStealFromChestGoal extends Goal {
     /**
      * Søger efter en klatrebar blok (stige, lian, stillads) inden for en radius
      * på 4 blokke rundt om mob'en, på mob'ens aktuelle Y-niveau eller én blok over.
-     *
      * Bruges som fallback i tickMoving() når kisten er ovenover og normal
      * pathfinding ikke kan finde en rute op — f.eks. fordi den eneste adgang
      * er via en stige. Vi finder stigens position og navigerer tyven derhen
      * så den kan træde op og begynde at klatre.
-     *
      * Vi tjekker kun Y=0 og Y+1 relativt til mob'en: stiger der er mere end
      * én blok over gulvniveau ville kræve et hop for at nå, og det håndterer
      * vi ikke her.
-     *
      * @return positionen på en klatrebar blok, eller null hvis ingen fundet
      */
     /**
      * Scanner op til 8 blokke rundt om mob'en for en lukket hegn-lås, og returnerer
      * positionen 1 blok foran lågen på mob-siden (approach-position).
-     *
      * Bruges som fallback i tickMoving() når mob'en sidder fast fordi pathfinderen
      * ikke kan planlægge igennem en lukket lås. Pathfinderen returnerer da en delvis
      * rute der slutter langt fra kisten — approach-positionen er dog tilgængelig
      * (den er PÅ mob-siden af lågen, i den korridor mob'en allerede er i).
-     *
      * Hvis der er flere lukkede låger i nærheden, vælges den der peger mest i
      * retning mod kisten (størst prikprodukt af vektor-til-lås og vektor-til-kiste).
-     *
      * @return approach-position foran den nærmeste relevante lås, eller null
      */
     @Nullable
@@ -695,7 +688,12 @@ public class FindAndStealFromChestGoal extends Goal {
                     BlockPos approach = gateApproachPos(check, state, center);
                     if (approach == null) continue;
 
-                    // Scorer lågen efter hvor meget den er "i retning mod kisten"
+                    // Prikprodukt af (vektor fra mob til lås) · (vektor fra mob til kiste).
+                    // Prikproduktet er størst når de to vektorer peger i samme retning —
+                    // dvs. når lågen ligger "på vejen" mod kisten. Negative værdier betyder
+                    // at lågen er bag mob'en (modsat kiste-retningen). Vi vælger den lås
+                    // med det største prikprodukt, så vi prioriterer den lås der er mest
+                    // "i retning mod kisten" og undgår at vælge irrelevante naboer.
                     double gx = check.getX() - center.getX();
                     double gz = check.getZ() - center.getZ();
                     double dot = gx * toChestX + gz * toChestZ;
@@ -712,14 +710,11 @@ public class FindAndStealFromChestGoal extends Goal {
     /**
      * Beregner approach-positionen for en hegn-lås: den blok 1 trin foran lågen
      * langs passage-aksen, på den side der er tættest på mob'en.
-     *
      * En lås med FACING langs Z-aksen (NORTH/SOUTH) passeres i Z-retningen.
      *   Approach-siderne er gatePos.north() og gatePos.south().
      * En lås med FACING langs X-aksen (EAST/WEST) passeres i X-retningen.
      *   Approach-siderne er gatePos.east() og gatePos.west().
-     *
      * Vi vælger den af de to sider der er tættest på mob'en.
-     *
      * @param gatePos   position på hegn-låsen
      * @param state     blokstate (bruges til at læse FACING)
      * @param mobPos    mob'ens nuværende blokposition
@@ -761,21 +756,17 @@ public class FindAndStealFromChestGoal extends Goal {
 
     /**
      * Finder den bedst egnede naboposition til at stå ved kisten.
-     *
      * Prioritetsrækkefølge baseret på kistens åbningsretning (FACING):
      *   1. Foran kisten — der hvor låget åbner mod (score 3)
      *   2. Ved siden af kisten — de to retninger vinkelret på FACING (score 2)
      *   3. Bagved kisten (score 1)
-     *
      * En position er kun gangbar hvis:
      *   - Selve blokken er ikke solid (mob'en kan stå her)
      *   - Blokken ovenover er ikke solid (plads til hoved)
      *   - Blokken nedenunder har en solid overside (fast underlag)
-     *
      * Hvis to gangbare positioner har samme score, vælges den tættest på mob'en.
      * Returnerer null hvis ingen naboretning er gangbar — caller bruger
      * da kistens centrum som fallback.
-     *
      * @param chestPos kistens position
      * @return den bedste stå-position, eller null
      */
@@ -830,18 +821,15 @@ public class FindAndStealFromChestGoal extends Goal {
     /**
      * Tjekker om mob'en er direkte adjacent til kisten — præcis 1 blok væk i én
      * kardinalretning (nord, syd, øst eller vest), max 1 blok lodret forskel.
-     *
      * Dette er sikringen mod "tyveri-igennem-væg":
      *   Hvis mob'en er 1 blok fra kisten i en kardinalretning, er der bogstaveligt
      *   ingen plads til en solid blok-væg imellem dem — de er direkte naboer.
      *   En distance på 2 blokke (distSq = 4.0) derimod tillader netop én blok-tykkelse
      *   væg imellem, og det var præcis det scenarie der forårsagede labyrint-buggen.
-     *
      * Vi tjekker ikke standingPos her med vilje: standingPos beregnes fra mob'ens
      * startposition og matcher ikke nødvendigvis den side mob'en faktisk navigerer til
      * i en labyrint. Mob'en ankommer fra den side labyrinten tillader, og den kan stjæle
      * fra en hvilken som helst kardinalretning ved kisten.
-     *
      * @return true hvis mob'en er direkte adjacent til kisten
      */
     private boolean isAdjacentToChest() {
@@ -856,17 +844,14 @@ public class FindAndStealFromChestGoal extends Goal {
 
     /**
      * Åbner eller lukker kiste-animationen ved at sende en block-event til serveren.
-     *
      * Block-eventet styrer kistens lid-animation på klient-siden, men afspiller
      * IKKE automatisk kiste-krakelydene — dem skal vi selv afspille eksplicit.
      * Vanilla-Minecraft afspiller lyden i ChestBlockEntity.startOpen() som vi
      * ikke kalder, så vi gør det manuelt her i stedet.
-     *
      * Når open = true:
      *   1. Block-event → kistens lid åbner (animation)
      *   2. CHEST_OPEN  → standard kiste-krakelyd fra kistens position
      *   3. OPEN_CHEST  → mob'ens egen "opdagelse"-lyd fra mob'ens position
-     *
      * @param pos  positionen på kisten, eller null (gør ingenting)
      * @param open true for at åbne, false for at lukke
      */
@@ -900,13 +885,10 @@ public class FindAndStealFromChestGoal extends Goal {
 
     /**
      * Spiller mob'ens begejstringslyd når den finder og stjæler et item.
-     *
      * Bruger ChestThiefSounds.STEAL_ITEM — det brugerdefinerede lyd-event
      * der er defineret i assets/chest_thief/sounds.json.
-     *
      * Pitchen varieres tilfældigt (0.9–1.1) så lyden ikke lyder identisk
      * hver gang der stjæles fra en kiste.
-     *
      * Lydfilen kan skiftes ved at lægge steal_item.ogg i
      * assets/chest_thief/sounds/ og opdatere sounds.json.
      */
@@ -924,11 +906,9 @@ public class FindAndStealFromChestGoal extends Goal {
 
     /**
      * Tjekker om der stadig er en gyldig kiste på den givne position.
-     *
      * En gyldig kiste kræver to ting:
      *   1. Blokken er stadig en ChestBlock (ikke ødelagt)
      *   2. Der er stadig en ChestBlockEntity (indholdet er intakt)
-     *
      * @param pos  positionen der skal tjekkes
      * @return true hvis der er en gyldig kiste, ellers false
      */
@@ -940,7 +920,6 @@ public class FindAndStealFromChestGoal extends Goal {
 
     /**
      * Stjæler det mest værdifulde item fra kisten og erstatter det med gulerødder.
-     *
      * Algoritme:
      *   1. Gå igennem alle 27 pladser i kisten
      *   2. Slå item-id'et op i config's værdiliste (f.eks. "minecraft:diamond" = 500)
@@ -950,10 +929,8 @@ public class FindAndStealFromChestGoal extends Goal {
      *   3b. stealOnlyListedItems = true:
      *       Items der ikke er i listen springes over — kun listede items stjæles.
      *   4. Tag pladsen med den højeste værdi og erstat det med gulerødder.
-     *
      * Gulerødder vælges som erstatning fordi de er harmløse og signalerer
      * at noget er stjålet ("betaling" fra tyvens perspektiv).
-     *
      * @param chest den kiste der skal stjæles fra
      */
     private void stealFromChest(ChestBlockEntity chest) {
@@ -1003,14 +980,11 @@ public class FindAndStealFromChestGoal extends Goal {
 
     /**
      * Tjekker om kisten stadig indeholder noget der er værd at stjæle.
-     *
      * Hvad der tæller som "værdifuldt" afhænger af stealOnlyListedItems:
      *   false (standard): Alt der ikke er en gulerod tæller som værdifuldt.
      *   true: Kun items der er i values-listen tæller som værdifulde.
-     *
      * Bruges til at afgøre om mob'en skal markere kisten som udtømt
      * og bevæge sig videre til den næste.
-     *
      * @param chest kisten der tjekkes
      * @return true hvis kisten indeholder mindst ét stjæleværdigt item
      */

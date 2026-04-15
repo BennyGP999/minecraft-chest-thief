@@ -22,21 +22,18 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 /**
  * Mixin der udvider WalkNodeEvaluator med kløft-hop-evner for ChestThiefEntity.
- *
  * Hvad er problemet?
  *   Minecraft's WalkNodeEvaluator genererer pathfinding-noder ét blok ad gangen
  *   i hver kardinalretning. Det betyder at pathfinderen aldrig planlægger at hoppe
  *   over en kløft på 2 blokke — den ser kun 1 blok frem og giver op når der er
  *   et hul. Mob'en har fysisk set hoppekraft nok (JUMP_STRENGTH = 0.5 + speed = 0.27
  *   giver ~3 blokke horisontal rækkevidde), men pathfinderen ved det ikke.
- *
  * Hvad gør dette Mixin?
  *   Vi injicerer i slutningen af getNeighbors() — den metode der bestemmer hvilke
  *   noder pathfinderen må gå til fra den aktuelle node. Kun for ChestThiefEntity.
  *   For hver kardinalretning tjekker vi: er der en 2-bloks kløft (ingen fast underlag
  *   1 blok fremme) og en gyldig landingsposition (fast underlag + åbent rum) 2 blokke
  *   fremme? Hvis ja, tilføjer vi landingsnoden til nabosættet.
- *
  * Vigtige begrænsninger:
  *   - Kun for ChestThiefEntity — andre mobs er upåvirkede
  *   - Lava-kløfter undgås (for farligt)
@@ -49,11 +46,9 @@ public abstract class WalkNodeEvaluatorMixin {
     /**
      * Injectes i slutningen ("RETURN") af WalkNodeEvaluator.getNeighbors().
      * Kører EFTER at den normale nabogenerering er færdig.
-     *
      * mob-feltet og getNode()-metoden tilgås via NodeEvaluatorAccessor fordi begge
      * er defineret i NodeEvaluator (superklassen) og ikke overskrevet i WalkNodeEvaluator.
      * @Shadow kan ikke finde inherited members der ikke er redefineret i target-klassen.
-     *
      * @param neighbors  det præallokerede array af noder (størrelse 32) der udfyldes
      * @param node       den aktuelle node hvorfra naboer beregnes
      * @param cir        Mixin-callback med returværdien (antal gyldige noder i arrayet)
@@ -71,7 +66,8 @@ public abstract class WalkNodeEvaluatorMixin {
         int count = cir.getReturnValue();
         Level level = mob.level();
 
-        // De fire kardinalretninger i XZ-planet
+        // De fire kardinalretninger i XZ-planet som {dx, dz}-par:
+        //   {1,0}=øst  {-1,0}=vest  {0,1}=syd  {0,-1}=nord
         // Diagonale kløfter håndteres ikke — de kræver et skråt spring der er upålideligt
         int[][] dirs = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
 

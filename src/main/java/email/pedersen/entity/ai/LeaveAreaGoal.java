@@ -72,7 +72,6 @@ public class LeaveAreaGoal extends Goal {
 
     /**
      * Kan målet starte?
-     *
      * Betingelser der ALLE skal være opfyldt:
      *   - Beholdningen er fuld (alle slots optaget)
      *   - Mob'en er ikke i panik (PanicFleeGoal har højere prioritet)
@@ -117,10 +116,8 @@ public class LeaveAreaGoal extends Goal {
 
     /**
      * Kører hvert tick mens mob'en forlader gerningsstedet.
-     *
      * Re-sætter usynlighed hvert tick: panik og berserk kalder setInvisible(false),
      * og denne re-sætning sikrer at tyven er usynlig igen så snart den sniger sig væk.
-     *
      * Tæller ned lyd-timer og afspiller en tilfreds-lyd når timeren rammer 0 —
      * et auditivt hint til spilleren om at tyven stadig er i nærheden.
      */
@@ -162,10 +159,8 @@ public class LeaveAreaGoal extends Goal {
 
     /**
      * Afspiller en kort tilfredsheds-lyd fra mob'ens position.
-     *
      * Lyden er et auditivt hint til spilleren om at tyven er i nærheden,
      * selvom den er usynlig. Kun server-side — klienten spiller ingen lyd direkte.
-     *
      * Pitchen varieres lidt tilfældigt (0.85–1.15) så lyden ikke lyder identisk
      * hver gang.
      */
@@ -183,11 +178,9 @@ public class LeaveAreaGoal extends Goal {
 
     /**
      * Beregner en position væk fra den sidst besøgte kiste og navigerer derhen.
-     *
      * Bruger DefaultRandomPos.getPosAway() til at finde et tilfældigt gangbart
      * punkt i retningen væk fra kiste-positionen (op til 16 blokke horisontalt,
      * 7 vertikalt). Hastighed 1.0 = normalt tempo (ikke sprint).
-     *
      * Den langsomme tempo er bevidst: tyven sniger sig roligt ud,
      * i modsætning til panik-flugten der er hurtig.
      */

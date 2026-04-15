@@ -21,7 +21,6 @@ public class ChestThiefRenderState extends HumanoidRenderState {
      * Om mob'en i øjeblikket har et kiste-mål.
      * Bruges af ChestThiefModel til at animere armene fremad
      * (som om mob'en rækker ud efter kisten).
-     *
      * true = mob'en er på vej til eller stjæler fra en kiste
      * false = mob'en vandrer rundt og søger
      */
@@ -31,7 +30,6 @@ public class ChestThiefRenderState extends HumanoidRenderState {
      * Om det er nat i mob'ens verden.
      * Bruges af ChestThiefModel til at animere armene i "zombie-stillingen"
      * (strakt fremad) om natten, ligesom rigtige zombier.
-     *
      * true = nat → zombie-arm-animation
      * false = dag → normal arm-animation eller kiste-række-animation
      */
@@ -41,10 +39,8 @@ public class ChestThiefRenderState extends HumanoidRenderState {
      * Mob'ens hoved-pitch (op/ned-rotation) i radianer.
      * Giver mob'en mulighed for at kigge op og ned mod kister
      * der er højere eller lavere end mob'en selv.
-     *
      * Beregnes i ChestThiefRenderer med Mth.lerp() for en glidende animation.
      * Positive værdier = kig nedad, negative = kig opad (Minecraft-konvention).
-     *
      * Enheden er radianer (ikke grader): 0 = lige frem, PI/2 ≈ 1.57 = kig lodret ned
      */
     public float headPitch = 0.0f;

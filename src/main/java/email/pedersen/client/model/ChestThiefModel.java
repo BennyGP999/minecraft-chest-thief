@@ -35,7 +35,6 @@ public class ChestThiefModel extends HumanoidModel<ChestThiefRenderState> {
      * Constructor — modtager en færdigbagt ModelPart fra Minecraft's model-system.
      * ModelPart er et træ af kasse-dele. "root" er roden, og alle andre dele
      * (head, body, right_arm osv.) er børn/barnebørn af root.
-     *
      * @param root den færdigbagede rod-del med alle kasse-definitioner
      */
     public ChestThiefModel(ModelPart root) {
@@ -48,7 +47,6 @@ public class ChestThiefModel extends HumanoidModel<ChestThiefRenderState> {
      * af modellen. Minecraft "bager" den derefter til en færdig ModelPart.
      * CubeDeformation bruges til at gøre kasser lidt større end standard
      * (f.eks. til rustning der sidder oven på et lag).
-     *
      * @param deformation ekstra størrelsesjustering (CubeDeformation.NONE = ingen justering)
      * @return en MeshDefinition med alle kasse-definitioner
      */
@@ -129,7 +127,6 @@ public class ChestThiefModel extends HumanoidModel<ChestThiefRenderState> {
      * Opretter det registrerede "layer definition" for denne model.
      * Kaldes én gang af ModelLayerRegistry og returnerer en komplet beskrivelse
      * af modellen inkl. teksturstørrelsen (64×64 pixels).
-     *
      * @return en LayerDefinition med mesh-definitionen og teksturstørrelsen
      */
     public static LayerDefinition createBodyLayer() {
@@ -148,7 +145,6 @@ public class ChestThiefModel extends HumanoidModel<ChestThiefRenderState> {
      * Rotation-enheder: Radianer (ikke grader). PI/2 ≈ 1.57 = 90 grader.
      *   Positiv xRot = arm drejer nedad (fremad i human-koordinater)
      *   Negativ xRot = arm drejer opad (bagud)
-     *
      * @param state render-tilstanden med mob'ens aktuelle data
      */
     @Override

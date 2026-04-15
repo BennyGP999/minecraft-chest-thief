@@ -18,7 +18,6 @@ import java.util.Map;
  *   chest_thief_config.json — generelle indstillinger:
  *     chestInteractionIntervalTicks: ticks mellem hvert stjæl (20 ticks = 1 sekund)
  *     chestDetectionRadius: søgeradius for kister i blokke
- *     provokedDurationTicks: hvor længe mob'en er fjendtlig efter at blive ramt om dagen
  *     stealOnlyListedItems: om kun items fra values-listen må stjæles (se nedenfor)
  *     spawnBiomes: liste over biomer mob'en spawner i
  *     spawnWeight: spawning-hyppighed (koen er 8; højere = mere almindelig)
@@ -52,18 +51,13 @@ public class ChestThiefConfig {
     /**
      * Maksimal lodret afstand (i blokke) fra mob'en til en kiste for at den kan detekteres.
      * Filtrerer kister der er for langt over eller under mob'en.
-     *
      * Tradeoff:
      *   Lav værdi (f.eks. 8):  finder ikke dybt skjulte baser, men heller ikke vanilla dungeons
      *   Høj værdi (f.eks. 40): finder spillerbaser langt under terræn, men afslører også dungeons
-     *
      * Standard: 16 blokke — finder kister i kældre og lavvandede spillerbaser,
      * men ikke forseglade dungeons der typisk ligger 20-40 blokke under terræn.
      */
     private int chestDetectionMaxVerticalDist = 16;
-
-    /** How many ticks the Chest Thief stays hostile after being hit during the day. 20 ticks = 1 second. */
-    private int provokedDurationTicks = 200; // 10 seconds
 
     /** Which biomes the Chest Thief spawns in (resource location strings). */
     private List<String> spawnBiomes = List.of(
@@ -79,11 +73,9 @@ public class ChestThiefConfig {
      * Minimum antal kister inden for detektionsradius for at en tyv må spawne naturligt.
      * Sikrer at tyve primært dukker op i nærheden af bebyggelser og spillerbaser
      * frem for i øde vildmark uden noget at stjæle.
-     *
      *   0 = ingen krav — tyve spawner overalt som normale monstre
      *   2 = kræver mindst 2 kister i nærheden (standard)
      *   5 = kræver en hel lille base — kun tæt beboede områder tiltrækker tyve
-     *
      * Bruger samme detektionsradius og vertikale grænse som selve tyverilogikken.
      */
     private int spawnMinNearbyChests = 2;
@@ -99,25 +91,23 @@ public class ChestThiefConfig {
 
     /**
      * Styrer om Chest Thief kun stjæler items der er oplistet i chest_thief_values.json.
-     *
      *   false (standard): Alle items kan stjæles. Items der ikke er i listen tildeles
      *                     automatisk minimumsværdi 1, så de stadig kan stjæles —
      *                     listen styrer kun hvilke items der prioriteres højest.
-     *
      *   true: Kun items der eksplicit er oplistet i chest_thief_values.json stjæles.
      *         Unlisted items ignoreres helt. Nyttigt til servere der kun vil lade
      *         Chest Thieves stjæle bestemte items (f.eks. kun diamanter og elytraer).
      */
+    // Gson sætter feltet via reflection ved deserialisering — IntelliJ ser ikke dette og advarer fejlagtigt.
+    @SuppressWarnings({"FieldMayBeFinal", "FieldCanBeLocal"})
     private boolean stealOnlyListedItems = false;
 
     /**
      * Sandsynlighed (0.0–1.0) for at Chest Thief paniker i stedet for at slå igen
      * når den angribes om dagen.
-     *
      *   0.0 = aldrig panik — slår altid igen
      *   0.6 = 60% chance for panik, 40% chance for at slå igen (standard)
      *   1.0 = altid panik — slår aldrig igen om dagen
-     *
      * Under panik sprinter mob'en væk fra angriberen og taber ét tilfældigt item
      * fra sin beholdning. De resterende items kan fås ved at slå den ihjel.
      */
@@ -132,7 +122,6 @@ public class ChestThiefConfig {
     /**
      * Antal ticks mob'en går væk fra den sidst besøgte kiste når beholdningen er fuld.
      * 20 ticks = 1 sekund. Standard: 200 ticks = 10 sekunder.
-     *
      * Bruges af LeaveAreaGoal, som aktiveres automatisk når mob'en har fyldt
      * alle 5 bæreslots og ikke kan stjæle mere.
      */
@@ -210,6 +199,8 @@ public class ChestThiefConfig {
      * Om tyven afspiller en lyd mens den sniger sig væk med sit bytte.
      * false = lyden er slået fra. Standard: true.
      */
+    // Gson sætter feltet via reflection ved deserialisering — IntelliJ ser ikke dette og advarer fejlagtigt.
+    @SuppressWarnings({"FieldMayBeFinal", "FieldCanBeLocal"})
     private boolean leavingSoundEnabled = true;
 
     /**
@@ -237,28 +228,27 @@ public class ChestThiefConfig {
      */
     private void validate() {
         chestInteractionIntervalTicks = Math.max(1, chestInteractionIntervalTicks);
-        chestDetectionRadius = Math.max(1, Math.min(500, chestDetectionRadius));
-        chestDetectionMaxVerticalDist = Math.max(1, Math.min(256, chestDetectionMaxVerticalDist));
-        provokedDurationTicks = Math.max(0, provokedDurationTicks);
-        spawnWeight = Math.max(1, Math.min(1000, spawnWeight));
+        chestDetectionRadius = Math.clamp(chestDetectionRadius, 1, 500);
+        chestDetectionMaxVerticalDist = Math.clamp(chestDetectionMaxVerticalDist, 1, 256);
+        spawnWeight = Math.clamp(spawnWeight, 1, 1000);
         spawnMinGroup = Math.max(1, spawnMinGroup);
         spawnMaxGroup = Math.max(spawnMinGroup, spawnMaxGroup);
         if (spawnBiomes == null || spawnBiomes.isEmpty()) {
             spawnBiomes = List.of("minecraft:plains");
         }
-        panicChance = Math.max(0.0, Math.min(1.0, panicChance));
+        panicChance = Math.clamp(panicChance, 0.0, 1.0);
         panicDurationTicks = Math.max(1, panicDurationTicks);
         leaveDurationTicks = Math.max(1, leaveDurationTicks);
-        maxCarrySlots = Math.max(1, Math.min(27, maxCarrySlots));
+        maxCarrySlots = Math.clamp(maxCarrySlots, 1, 27);
         berserkDurationTicks = Math.max(1, berserkDurationTicks);
-        berserkSpeedMultiplier = Math.max(1.0, Math.min(5.0, berserkSpeedMultiplier));
-        berserkFollowRange = Math.max(10.0, Math.min(200.0, berserkFollowRange));
-        nightSpeedBonus = Math.max(0.0, Math.min(1.0, nightSpeedBonus));
+        berserkSpeedMultiplier = Math.clamp(berserkSpeedMultiplier, 1.0, 5.0);
+        berserkFollowRange = Math.clamp(berserkFollowRange, 10.0, 200.0);
+        nightSpeedBonus = Math.clamp(nightSpeedBonus, 0.0, 1.0);
         stealthMinTicks = Math.max(1, stealthMinTicks);
         stealthMaxTicks = Math.max(stealthMinTicks, stealthMaxTicks);
         stealthCooldownMinTicks = Math.max(1, stealthCooldownMinTicks);
         stealthCooldownMaxTicks = Math.max(stealthCooldownMinTicks, stealthCooldownMaxTicks);
-        stealthChance = Math.max(0.0, Math.min(1.0, stealthChance));
+        stealthChance = Math.clamp(stealthChance, 0.0, 1.0);
         departDelayTicks = Math.max(0, departDelayTicks);
         departDurationTicks = Math.max(20, departDurationTicks);
         maxAgeTicks = Math.max(1200, maxAgeTicks);
@@ -271,7 +261,6 @@ public class ChestThiefConfig {
     public int getChestInteractionIntervalTicks() { return chestInteractionIntervalTicks; }
     public double getChestDetectionRadius() { return chestDetectionRadius; }
     public int getChestDetectionMaxVerticalDist() { return chestDetectionMaxVerticalDist; }
-    public int getProvokedDurationTicks() { return provokedDurationTicks; }
     public List<String> getSpawnBiomes() { return spawnBiomes; }
     public int getSpawnWeight() { return spawnWeight; }
     public int getSpawnMinGroup() { return spawnMinGroup; }
@@ -302,7 +291,6 @@ public class ChestThiefConfig {
     /**
      * Returnerer den delte config-instans.
      * Indlæser config automatisk hvis den ikke er indlæst endnu.
-     *
      * @return den aktuelle konfiguration
      */
     public static ChestThiefConfig getInstance() {
@@ -397,14 +385,11 @@ public class ChestThiefConfig {
 
     /**
      * Opretter standardlisten over item-værdier til tjæleriet.
-     *
      * Hvert item tildeles en prioritetsværdi — jo højere tal, jo mere
      * eftertragtet er itemet for Chest Thief'en. Mob'en vælger altid
      * det item med højest værdi i kisten.
-     *
      * Items der ikke er på listen får automatisk minimumsværdi 1,
      * så alt kan stjæles — ikke kun items i listen.
-     *
      * @return et Map fra item-id (f.eks. "minecraft:diamond") til prioritetsværdi
      */
     private static Map<String, Integer> createDefaultItemValues() {

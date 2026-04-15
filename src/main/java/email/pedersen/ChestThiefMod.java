@@ -63,7 +63,6 @@ public class ChestThiefMod implements ModInitializer {
      * Selve entitets-typen for Chest Thief.
      * Dette objekt fortæller Minecraft: "der eksisterer en mob der hedder chest_thief,
      * den er 0.6 blokke bred og 1.8 blokke høj, og den er en MONSTER."
-     *
      * Registreres med det samme (static), så andre klasser kan bruge den til at
      * spawne mobs med, f.eks. i spawn egg og biom-spawning.
      */
@@ -79,7 +78,6 @@ public class ChestThiefMod implements ModInitializer {
     /**
      * Spawn egg-itemet, der vises i kreativ-menuens "Spawn Eggs"-fane.
      * Når man bruger det på en blok, spawner en Chest Thief-mob.
-     *
      * .spawnEgg(CHEST_THIEF_ENTITY_TYPE) knytter itemet til entiteten,
      * så Minecraft ved hvilken mob der skal spawnes.
      */
@@ -205,9 +203,7 @@ public class ChestThiefMod implements ModInitializer {
     /**
      * Hjælpemetode der laver en Identifier med mod-id som præfix.
      * F.eks.: id("chest_thief_spawn_egg") → "chest_thief:chest_thief_spawn_egg"
-     *
      * Bruges overalt i koden for at undgå at gentage MOD_ID manuelt.
-     *
      * @param path den del af identifieren der kommer efter ":"
      * @return en fuld Identifier med chest_thief-præfix
      */

@@ -30,7 +30,6 @@ public class ChestTracker {
      * Kiste-positioner grupperet efter dimension.
      * Nøgle: dimensionens id som tekst (f.eks. "minecraft:overworld")
      * Værdi: et sæt af BlockPos-objekter (hver kiste er én position)
-     *
      * HashSet bruges fordi:
      *   - add() og remove() er O(1) — konstant tid uanset størrelse
      *   - Duplikater ignoreres automatisk (vigtig fordi setLevel() kan kaldes flere gange)
@@ -43,10 +42,8 @@ public class ChestTracker {
 
     /**
      * Registrerer en kiste-position i trackeren.
-     *
      * Kaldes fra ChestBlockEntityMixin når en kiste-BlockEntity sættes op i verdenen.
      * pos.immutable() laver en fast kopi af positionen (BlockPos kan være midlertidig).
-     *
      * @param level verdenen kisten befinder sig i
      * @param pos   kistens position i verdenen
      */
@@ -58,11 +55,9 @@ public class ChestTracker {
 
     /**
      * Fjerner en kiste-position fra trackeren.
-     *
      * Kaldes når en spiller ødelægger en kiste (via ChestThiefMod),
      * og når en kiste viser sig at være forsvundet (via FindAndStealFromChestGoal).
      * Hvis det var den sidste kiste i dimensionen, fjernes dimensionens sæt også.
-     *
      * @param level verdenen kisten befandt sig i
      * @param pos   kistens position
      */
@@ -80,7 +75,6 @@ public class ChestTracker {
     /**
      * Finder den nærmeste kendte kiste inden for en given radius.
      * Ingen eksklusioner — finder den absolut nærmeste kiste.
-     *
      * @param level     verdenen der søges i
      * @param origin    udgangspunktet for søgningen (typisk mob'ens position)
      * @param maxRadius maksimal søgeradius i blokke
@@ -103,7 +97,6 @@ public class ChestTracker {
      * under mob'en — uanset om de er inden for den horisontale radius. Dette forhindrer
      * at mob'en detekterer dybt nedgravede dungeons og spolerer opdagelsesoplevelsen,
      * mens spillerbaser tæt under terræn stadig kan opdages.
-     *
      * @param level          verdenen der søges i
      * @param origin         udgangspunktet for søgningen
      * @param maxRadius      maksimal søgeradius i blokke (3D)
@@ -144,7 +137,6 @@ public class ChestTracker {
     /**
      * Finder den nærmeste kendte kiste inden for en given radius, med eksklusioner.
      * Bruger ingen vertikal begrænsning — til intern brug og leash-detektion.
-     *
      * @param level     verdenen der søges i
      * @param origin    udgangspunktet for søgningen
      * @param maxRadius maksimal søgeradius i blokke
@@ -158,11 +150,9 @@ public class ChestTracker {
 
     /**
      * Scanner indlæste chunks for eksisterende kister.
-     *
      * Denne metode er en placeholder — vi scanner ikke aktivt.
      * I stedet håndteres eksisterende kister af ChestBlockEntityMixin,
      * der fanger kister når de indlæses fra disk (chunk-load).
-     *
      * @param level den server-verden der skal scannes (ubrugt p.t.)
      */
     public static void scanLoadedChunks(ServerLevel level) {
@@ -172,7 +162,6 @@ public class ChestTracker {
     /**
      * Fjerner alle kister i en specifik dimension fra trackeren.
      * Kan bruges hvis en dimension unloades.
-     *
      * @param level verdenen/dimensionen der skal ryddes
      */
     public static void clearDimension(Level level) {
@@ -185,7 +174,6 @@ public class ChestTracker {
      * er nok kister i området til at det er værd for en tyv at spawne der.
      * Jo flere kister i nærheden, jo mere attraktivt er området for en tyv.
      * Bruger samme vertikale filter som findNearest() for konsistens.
-     *
      * @param level          verdenen der søges i
      * @param origin         udgangspunktet for søgningen (typisk spawn-positionen)
      * @param maxRadius      maksimal søgeradius i blokke
@@ -220,7 +208,6 @@ public class ChestTracker {
     /**
      * Returnerer det samlede antal sporede kister på tværs af alle dimensioner.
      * Nyttig til debugging ("Checker: X kister tracked").
-     *
      * @return samlet antal kiste-positioner
      */
     public static int getTotalTrackedCount() {
@@ -230,7 +217,6 @@ public class ChestTracker {
     /**
      * Laver en tekstnøgle ud fra en verdens dimension, f.eks. "minecraft:overworld".
      * Bruges som nøgle i CHESTS_BY_DIMENSION-map'et.
-     *
      * @param level verdenen
      * @return dimensionens id som tekst
      */

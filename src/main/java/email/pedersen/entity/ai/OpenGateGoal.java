@@ -18,16 +18,13 @@ import java.util.EnumSet;
 
 /**
  * AI-mål: Åbn hegn-låger og fældeluger (trapdøre) der blokerer vejen til en kiste.
- *
  * Spillere bruger hegn-låger og trapdøre som simpel sikkerhed — en tyv der tidligere
  * var vandrende handelsmand ved præcis, hvordan man åbner en byport eller kælderluge.
- *
  * Adfærd:
  *   Hvert 5. tick scanner mål'et et område på 2 blokke rundt om mob'en.
  *   Finder det en lukket FenceGateBlock eller TrapDoorBlock, åbner det den,
  *   og lukker den igen 30 ticks (~1,5 sekund) senere — tilstrækkeligt til at
  *   mob'en kan navigere igennem.
- *
  * Vigtige detaljer:
  *   - Ingen Goal-flag: kører parallelt med alle bevægelses-mål (ligesom OpenDoorGoal).
  *   - Kun aktiv når mob'en har et aktivt kiste-mål (targetChestPos != null) og
@@ -91,7 +88,6 @@ public class OpenGateGoal extends Goal {
 
     /**
      * Kan målet starte?
-     *
      * Aktiveres i tre situationer:
      *   1. Mob'en navigerer aktivt (isDone = false) — normalt forløb langs ruten,
      *      både på vej mod en kiste OG på vej ud af labyrinten efter stjæleriet.
@@ -103,7 +99,6 @@ public class OpenGateGoal extends Goal {
      *      er stoppet foran lågen og venter på at den åbnes.
      *   3. closeTimer > 0 — en lås er åbnet og venter på at blive lukket igen.
      *      Fanges i canContinueToUse(), ikke her.
-     *
      * Vi undgår dyr blok-scanning i canUse() ved kun at kalde findNearbyOpenable()
      * i det stille tilfælde (isDone = true med kiste-mål) — ikke mens mob'en navigerer.
      * Under tilfældig vandretur (WaterAvoidingRandomStrollGoal) sørger de eksisterende
@@ -183,7 +178,6 @@ public class OpenGateGoal extends Goal {
      * Find en lukket åbnbar blok i nærheden og åbn den.
      * Lukker den forrige åbning hvis vi finder en ny — undgår at holde
      * flere låger åbne på én gang.
-     *
      * Hvis navigationen var stoppet da lågen blev fundet (mob stod fast foran den),
      * genstartes navigationen mod kisten. Åbningen ændrer blok-tilstanden, som
      * normalt trigger en sti-genberegning via shouldRecalculatePath() — men kun
@@ -210,17 +204,14 @@ public class OpenGateGoal extends Goal {
     /**
      * Scanner et område på SCAN_RADIUS blokke rundt om mob'en og finder
      * den første lukkede hegn-lås eller fældeluge.
-     *
      * Vi tjekker højder -1 til +1 relativt til mob'ens fødder for at håndtere:
      *   dy = -1: trapdøre i gulvet (adgang til kælder nedefra)
      *   dy =  0: hegn-låger og trapdøre i samme højde
      *   dy = +1: trapdøre i loftet (adgang oppefra) og høje hegn-låger
-     *
      * For FenceGateBlock gælder et ekstra aksecheck (se isOnCorrectSideOfGate):
      *   Mob'en skal stå på passage-siden (nord/syd eller øst/vest afhængig af FACING),
      *   ikke fra siden igennem en nabovæg. Scan-radius begrænses til 1 for hegn-låger
      *   så mob'en skal stå direkte ved lågen — aldrig 2 blokke væk igennem en væg.
-     *
      * @return positionen på den første lukkede åbnbare blok, eller null hvis ingen fundet
      */
     @Nullable
@@ -254,17 +245,14 @@ public class OpenGateGoal extends Goal {
 
     /**
      * Tjekker at mob'en er placeret på den rigtige side af en hegn-lås.
-     *
      * En hegn-lås har en FACING-retning der angiver passér-aksen — den akse man
      * går langs for at gå igennem lågen:
      *   FACING = NORTH eller SOUTH (Z-akse): man går igennem i Z-retningen.
      *     Mob'en skal stå nord eller syd for lågen (dz != 0, dx = 0).
      *   FACING = EAST eller WEST (X-akse): man går igennem i X-retningen.
      *     Mob'en skal stå øst eller vest for lågen (dx != 0, dz = 0).
-     *
      * Uden dette tjek kan mob'en åbne lågen igennem en nabovæg — den er inden for
      * SCAN_RADIUS men på den forkerte side (perpendiculær på passage-aksen).
-     *
      * @param gatePos positionen på lågen
      * @param state   blokstate for lågen (bruges til at læse FACING)
      * @return true hvis mob'en er på korrekt passér-side
@@ -287,13 +275,11 @@ public class OpenGateGoal extends Goal {
 
     /**
      * Tjekker om en blok er en lukket hegn-lås eller fældeluge.
-     *
      * Vi bruger BlockStateProperties.OPEN (den fælles property) frem for
      * FenceGateBlock.OPEN / TrapDoorBlock.OPEN fordi begge bloktyper arver
      * OPEN fra BlockStateProperties — det er den samme BooleanProperty-instans.
      * hasProperty()-tjekket er en ekstra sikring mod at kalde getValue() på
      * en blok der ikke har OPEN-propertyen.
-     *
      * @param state block state for den blok der tjekkes
      * @return true hvis blokken er en lukket hegn-lås eller fældeluge
      */
@@ -305,12 +291,10 @@ public class OpenGateGoal extends Goal {
 
     /**
      * Åbner eller lukker en hegn-lås eller fældeluge og afspiller korrekt lyd.
-     *
      * setBlock() med flag 10 sender en blok-opdatering til klienten OG trigrer
      * Minecrafts block-change notifikation, som får mob'ens PathNavigation til
      * at genberegne sin sti. Det betyder at mob'en automatisk opdaterer sin rute
      * igennem den nu-åbne lås uden at vi skal genstarte navigationen manuelt.
-     *
      * @param pos  positionen på blokken der skal åbnes/lukkes
      * @param open true for at åbne, false for at lukke
      */

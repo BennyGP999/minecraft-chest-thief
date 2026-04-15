@@ -158,7 +158,6 @@ public class ChestThiefEntity extends Monster {
 
     /**
      * Constructor — kaldes af Minecraft når en ny Chest Thief-entitet oprettes i verden.
-     *
      * @param entityType den registrerede entitets-type (fra ChestThiefMod)
      * @param level      den verden/dimension mob'en spawner i
      */
@@ -171,10 +170,8 @@ public class ChestThiefEntity extends Monster {
 
     /**
      * Opretter den navigations-type mob'en bruger til at finde vej.
-     *
      * Vi bruger GroundPathNavigation (den normale jordbaserede navigation) med
      * fire tilpasninger der tilsammen giver tyven spiller-lignende fremkommelighed:
-     *
      *   setCanOpenDoors(true)          — kan åbne træ- og jerndøre (village-raids)
      *   setMaxVisitedNodesMultiplier   — fordobler antallet af pathfinding-noder;
      *                                    finder veje rundt om komplekse forhindringer
@@ -182,7 +179,6 @@ public class ChestThiefEntity extends Monster {
      *   setCanPathThroughWater(true)   — behandler vand som gangbart terræn i stedet
      *                                    for en forhindring; mob'en svømmer mod kister
      *                                    på den anden side af floder og søer
-     *
      * @param level den verden navigationen skal fungere i
      * @return en GroundPathNavigation konfigureret til maksimal fremkommelighed
      */
@@ -208,18 +204,14 @@ public class ChestThiefEntity extends Monster {
 
     /**
      * Øger step-height fra standard 0.6 til 1.0 blokke.
-     *
      * Step-height er den maksimale niveauforskel mob'en automatisk klatrer over
      * uden at hoppe. Standard 0.6 svarer til en halvslab — tyven snubler over
      * mange hverdagsforhindringer (trapper, tærskler, murkanter, jordbunker).
-     *
      * Med 1.0 klatrer mob'en direkte op på 1-bloks forhøjninger, præcis som
      * en spiller gør det — en handelsmand der har vandret i årevis kender
      * enhver vej og klatrer ubesværet over det meste.
-     *
      * I Minecraft 26.1.1 returnerer vi step-height som en getter fremfor at kalde
      * en setter — det er den korrekte API i denne version.
-     *
      * @return 1.0 blokke — svarende til spillerens naturlige step-height
      */
     @Override
@@ -229,15 +221,12 @@ public class ChestThiefEntity extends Monster {
 
     /**
      * Tillader mob'en at klatre op og ned ad stiger, lianer og stillads.
-     *
      * LivingEntity's standardimplementering tjekker BlockTags.CLIMBABLE, men
      * Monster-underklasser overskriver den ikke — vi gør det eksplicit her for
      * at sikre og dokumentere adfærden.
-     *
      * En vandrende handelsmand klatrer stiger i handelsposter og landsbyers
      * huse hver dag. Som tyv udnytter han præcis den viden til at nå kister
      * på 2. etage eller i kældre.
-     *
      * BlockTags.CLIMBABLE dækker bl.a.:
      *   - minecraft:ladder          (normale stiger)
      *   - minecraft:vine            (lianer på vægge)
@@ -245,7 +234,6 @@ public class ChestThiefEntity extends Monster {
      *   - minecraft:twisting_vines  (Nether)
      *   - minecraft:weeping_vines   (Nether)
      *   - minecraft:cave_vines      (drypstenshuler)
-     *
      * @return true hvis mob'en i øjeblikket befinder sig på en klatrebar blok
      */
     @Override
@@ -263,7 +251,6 @@ public class ChestThiefEntity extends Monster {
      * Disse værdier gælder for alle instanser af mob'en.
      * Kan kaldes statisk (uden en konkret entitet) fordi stats'ene
      * er de samme for alle Chest Thieves — de er ikke individuelle.
-     *
      * @return en builder med alle stats sat
      */
     public static AttributeSupplier.Builder createAttributes() {
@@ -295,7 +282,6 @@ public class ChestThiefEntity extends Monster {
      *   Tyve dukker primært op nær bebyggelser og baser med kister.
      *   En spiller der bygger i fri natur uden kister vil sjældent se tyve —
      *   men sætter de kister op, begynder tyve at trækkes til stedet.
-     *
      * @param type   mob-typen (ChestThiefEntity)
      * @param level  verden-accessor brugt til at tjekke spawning-betingelser
      * @param reason årsagen til spawn (naturlig, kommando, spawn egg osv.)
@@ -334,11 +320,9 @@ public class ChestThiefEntity extends Monster {
     /**
      * Registrerer alle AI-mål (Goals) for mob'en.
      * Et Goal er et stykke adfærd som mob'en kan udføre.
-     *
      * Prioritet fungerer sådan: lavere tal = højere prioritet.
      * Minecraft kører altid det mål med lavest prioritetstal, der kan starte.
      * Eks: Prioritet 0 (svøm) slår altid prioritet 5 (vandre).
-     *
      * goalSelector = hvad mob'en GØR (bevæge sig, angribe, vandre)
      * targetSelector = hvem mob'en ANGRIBER (vælger mål)
      */
@@ -401,16 +385,12 @@ public class ChestThiefEntity extends Monster {
 
     /**
      * Aktiveres når mob'en angribes om dagen.
-     *
      * Bestemmer tilfældigt om mob'en paniker eller slår igen:
      *   - panicChance (standard 60%): Panik — sprinter væk og taber ét item
      *   - resten (standard 40%): Hævn — sætter angriberen direkte som mål
-     *
      * Virker kun om dagen — om natten er mob'en altid fjendtlig i forvejen.
      * Ignoreres hvis mob'en allerede er i panik.
-     *
      * Kaldes fra ChestThiefMod via AFTER_DAMAGE-eventet.
-     *
      * @param attacker    angriberen som levende entitet (bruges til hævn-mål). Null er tilladt.
      * @param attackerPos positionen på angriberen (bruges til flugte-retning under panik). Null er tilladt.
      */
@@ -438,11 +418,9 @@ public class ChestThiefEntity extends Monster {
 
     /**
      * Kører én gang pr. tick (20 gange i sekundet) for denne mob.
-     *
      * Håndterer hævn-timeren: tæller ned så længe det er dag og
      * mob'en er i hævn-tilstand. Når timeren løber ud, ryddes målet
      * og mob'en vender tilbage til sin normale kiste-adfærd.
-     *
      * super.tick() sørger for al normal mob-logik (tyngdekraft, animation osv.)
      */
     @Override
@@ -526,9 +504,14 @@ public class ChestThiefEntity extends Monster {
                         }
                     }
                     if (nearest != null) {
-                        // Skub mod den nærmeste klatrebar nabo
+                        // Skub mod midten af stige-blokken (+0.5 = blokcentrum, da blockPos er hjørnet).
                         double dx2 = nearest.getX() + 0.5 - getX();
                         double dz2 = nearest.getZ() + 0.5 - getZ();
+                        // Beregn afstanden (Pythagoras) og normaliser til enhedsvektor:
+                        //   (dx2/len, dz2/len) er en vektor med præcis længde 1 i retning mod stigen.
+                        //   Ganges med 0.15 for at sætte farten til 0.15 blokke/tick mod stigen.
+                        // Tærsklen > 0.01 forhindrer division med næsten-nul hvis mob'en
+                        // allerede er midt i stigen (len ≈ 0 giver numerisk affald).
                         double len = Math.sqrt(dx2 * dx2 + dz2 * dz2);
                         if (len > 0.01) {
                             setDeltaMovement(dx2 / len * 0.15, getDeltaMovement().y, dz2 / len * 0.15);
@@ -584,6 +567,10 @@ public class ChestThiefEntity extends Monster {
                                 //
                                 // Kombinationen garanterer at hoppet altid udløses i rette tid
                                 // uanset præcis hvilken fase i blokken mob'en befinder sig.
+                                // gapWidth = antal TOM blokke i kløften (ikke afstanden til landingsblokken).
+                                // Næste node er f.eks. 2 blokke væk → afstand 2 → kløft har 1 tom blok (1-bloks kløft).
+                                // Næste node er 3 blokke væk → afstand 3 → 2 tomme blokke (2-bloks kløft).
+                                // -1 konverterer altså node-afstand til antal tomme blokke i kløften.
                                 int gapWidth = Math.max(Math.abs(gndx), Math.abs(gndz)) - 1;
                                 double fracX = getX() - getBlockX();
                                 double fracZ = getZ() - getBlockZ();
@@ -653,7 +640,6 @@ public class ChestThiefEntity extends Monster {
 
     /**
      * Kaldes når mob'en dør.
-     *
      * Minecraft kalder IKKE stop() på aktive goals ved mob-død, så en kiste der var
      * åben af tyven forbliver åben for altid. Vi lukker den manuelt her via det samme
      * blockEvent-kald som FindAndStealFromChestGoal.setChestOpen() bruger internt.
@@ -680,7 +666,6 @@ public class ChestThiefEntity extends Monster {
      *   - Positionen på den sidst besøgte kiste (lastChestPos)
      * Panik-tilstand (isPanicking) gemmes IKKE — det er en midlertidig tilstand
      * der nulstilles automatisk ved næste login.
-     *
      * @param output ValueOutput-instansen data gemmes til
      */
     @Override
@@ -706,7 +691,6 @@ public class ChestThiefEntity extends Monster {
     /**
      * Indlæser mob'ens tilstand fra Minecrafts lagringsformat (26.1.x: ValueInput API).
      * Kaldes automatisk af Minecraft ved indlæsning af en gemt verden.
-     *
      * @param input ValueInput-instansen data indlæses fra
      */
     @Override
@@ -748,7 +732,6 @@ public class ChestThiefEntity extends Monster {
      * Kaldes automatisk af Minecraft som del af døds-logikken.
      * super.dropCustomDeathLoot() håndterer normale loot-tables.
      * Vi tilføjer derefter alle items mob'en bar på sig.
-     *
      * @param serverLevel      den server-verden mob'en døde i
      * @param damageSource     skadekilden der dræbte mob'en
      * @param recentlyHit     om mob'en blev ramt indenfor 5 sekunder (påvirker loot-chance)
@@ -768,7 +751,6 @@ public class ChestThiefEntity extends Monster {
      * Som standard kan monstre ikke lægges i snor, men vi ønsker at
      * spillere kan bruge Chest Thieves som "kiste-hunde": Led dem rundt
      * og de finder kister og kigger på dem, men stjæler ikke mens de er i snor.
-     *
      * @return altid true — Chest Thieves kan altid lægges i snor
      */
     @Override
@@ -796,7 +778,6 @@ public class ChestThiefEntity extends Monster {
     /**
      * Returnerer positionen på den kiste mob'en i øjeblikket sigter mod.
      * Bruges af LookAtTargetChestGoal og ChestThiefRenderer.
-     *
      * @return kistens position, eller null hvis mob'en ikke har et mål
      */
     @Nullable
@@ -807,7 +788,6 @@ public class ChestThiefEntity extends Monster {
     /**
      * Sætter kiste-målet og opdaterer lastChestPos hvis positionen ikke er null.
      * Kaldes af FindAndStealFromChestGoal når mob'en vælger eller mister et mål.
-     *
      * @param pos den nye kiste-position, eller null for at rydde målet
      */
     public void setTargetChestPos(@Nullable BlockPos pos) {
@@ -820,7 +800,6 @@ public class ChestThiefEntity extends Monster {
     /**
      * Returnerer positionen på den kiste mob'en sidst stjal fra.
      * Bruges af LeaveAreaGoal til at finde flygte-retningen.
-     *
      * @return den sidst besøgte kiste-position, eller null
      */
     @Nullable
@@ -831,7 +810,6 @@ public class ChestThiefEntity extends Monster {
     /**
      * Tjekker om mob'ens beholdning er fuld (alle slots optaget).
      * Bruges af FindAndStealFromChestGoal og LeaveAreaGoal.
-     *
      * @return true hvis alle bæreslots er fyldt
      */
     public boolean isInventoryFull() {
@@ -844,7 +822,6 @@ public class ChestThiefEntity extends Monster {
     /**
      * Tilføjer et item til mob'ens beholdning (første ledige slot).
      * Tilføjer en kopi af stacken — originalen påvirkes ikke.
-     *
      * @param stack det item der skal tilføjes
      * @return true hvis der var plads, false hvis beholdningen er fuld
      */
@@ -862,7 +839,6 @@ public class ChestThiefEntity extends Monster {
      * Returnerer mob'ens bæreinventar.
      * Bruges af PanicFleeGoal til at droppe ét tilfældigt item under panik,
      * og af dropCustomDeathLoot til at droppe alle items ved død.
-     *
      * @return den mutable liste af bårne items
      */
     public NonNullList<ItemStack> getCarriedItems() {
@@ -872,7 +848,6 @@ public class ChestThiefEntity extends Monster {
     /**
      * Returnerer om mob'en i øjeblikket er i panik-tilstand.
      * Bruges af PanicFleeGoal og LeaveAreaGoal.
-     *
      * @return true hvis mob'en er i panik
      */
     public boolean isPanicking() {
@@ -882,7 +857,6 @@ public class ChestThiefEntity extends Monster {
     /**
      * Returnerer den position mob'en flygter fra under panik.
      * Bruges af PanicFleeGoal til at beregne flygte-retningen.
-     *
      * @return angriber-positionen, eller null
      */
     @Nullable
@@ -903,7 +877,6 @@ public class ChestThiefEntity extends Monster {
     /**
      * Starter berserker-mode: sætter speed-modifier, vælger mål og starter timer.
      * Kaldes fra provoke() ved 40% chance om dagen.
-     *
      * @param attacker angriberen der satte berserk i gang (bruges som første mål)
      */
     public void startBerserk(@Nullable LivingEntity attacker) {
@@ -947,7 +920,6 @@ public class ChestThiefEntity extends Monster {
     /**
      * Returnerer om mob'en i øjeblikket er i berserker-mode.
      * Bruges af BerserkTargetGoal og PanicFleeGoal.
-     *
      * @return true hvis mob'en er i berserker-mode
      */
     public boolean isBerserk() {
@@ -975,14 +947,12 @@ public class ChestThiefEntity extends Monster {
 
     /**
      * Tjekker om det er nat i den verden mob'en befinder sig i.
-     *
      * Minecraft-dagen er 24000 ticks lang:
      *   0     = solopgang
      *   6000  = middag
      *   13000 = solnedgang (her begynder "nat" i vores logik)
      *   18000 = midnat
      *   23000 = daggry (her slutter "nat" igen)
-     *
      * @return true hvis det er nat (ticks 13000–22999), ellers false
      */
     public boolean isNightTime() {

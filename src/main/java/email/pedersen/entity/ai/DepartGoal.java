@@ -86,10 +86,8 @@ public class DepartGoal extends Goal {
 
     /**
      * Kører hvert tick mens tyven drager bort.
-     *
      * Re-sætter usynlighed hvert tick: panik og berserk kalder setInvisible(false),
      * og denne re-sætning sikrer at tyven er usynlig igen så snart afrejsen genoptages.
-     *
      * Witch-partikler spawner hvert 8. tick (ca. 2-3 gange/sek) som visuelt hint.
      * Lyden afspilles med jævne mellemrum som et auditivt hint.
      */
@@ -134,7 +132,6 @@ public class DepartGoal extends Goal {
 
     /**
      * Afspiller en kort tilfredsheds-lyd fra mob'ens position.
-     *
      * Et auditivt hint til spilleren om at tyven er i nærheden.
      * Pitchen varieres lidt tilfældigt (0.85–1.15) så lyden ikke lyder identisk
      * hver gang.

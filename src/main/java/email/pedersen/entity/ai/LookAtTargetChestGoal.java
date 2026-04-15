@@ -36,7 +36,6 @@ public class LookAtTargetChestGoal extends Goal {
 
     /**
      * Kan målet starte? Kun hvis mob'en har valgt en kiste den sigter mod.
-     *
      * @return true hvis targetChestPos er sat, ellers false
      */
     @Override
@@ -47,7 +46,6 @@ public class LookAtTargetChestGoal extends Goal {
     /**
      * Kan målet fortsætte? Præcis samme betingelse som canUse().
      * Stopper automatisk når FindAndStealFromChestGoal rydder kiste-positionen.
-     *
      * @return true hvis mob'en stadig har et kiste-mål
      */
     @Override
@@ -57,13 +55,10 @@ public class LookAtTargetChestGoal extends Goal {
 
     /**
      * Kører hvert tick mens målet er aktivt.
-     *
      * Fortæller mob'ens LookControl at den skal kigge mod kistens centrum.
      * LookControl roterer derefter gradvist (over flere ticks) mod målet.
-     *
      * Koordinater: kistens centrum er X+0.5, Y+0.5, Z+0.5
      * (blokke er 1×1×1, og BlockPos peger på hjørnet af blokken)
-     *
      * De to tal til sidst (10.0f og 40.0f) er max-rotationshastigheder
      * i grader pr. tick for henholdsvis Y-aksen (sving til siden)
      * og X-aksen (kig op/ned).

@@ -52,7 +52,6 @@ public class ChestThiefRenderer extends HumanoidMobRenderer<ChestThiefEntity, Ch
      * context.bakeLayer(MODEL_LAYER) henter den registrerede model-definition
      * og "bager" den til en færdig ModelPart-træstruktur klar til rendering.
      * 0.5f er skyggeradius (shadow) under mob'en i blokke.
-     *
      * @param context indeholder resourceloaders og model-baker fra Minecraft
      */
     public ChestThiefRenderer(EntityRendererProvider.Context context) {
@@ -65,7 +64,6 @@ public class ChestThiefRenderer extends HumanoidMobRenderer<ChestThiefEntity, Ch
      * hvilken tekstur der skal bruges. Vi bruger altid den samme tekstur,
      * men metoden kunne i princippet returnere forskellige teksturer
      * baseret på state (f.eks. en beskadiget tekstur ved lavt liv).
-     *
      * @param state den aktuelle render-tilstand for mob'en
      * @return stien til tekstur-filen
      */
@@ -77,7 +75,6 @@ public class ChestThiefRenderer extends HumanoidMobRenderer<ChestThiefEntity, Ch
     /**
      * Opretter en ny, tom RenderState-instans.
      * Minecraft kalder denne metode én gang og genbruger instansen hvert frame.
-     *
      * @return en ny ChestThiefRenderState med standardværdier
      */
     @Override
@@ -93,7 +90,6 @@ public class ChestThiefRenderer extends HumanoidMobRenderer<ChestThiefEntity, Ch
      * Mth.lerp() (linear interpolation) bruges til at beregne en glidende overgang
      * mellem forrige tick og nuværende tick, så animationen ser smooth ud selv ved
      * lavere TPS (ticks per sekund). partialTick er et tal 0.0–1.0.
-     *
      * @param entity      den Chest Thief-entitet vi henter data fra
      * @param state       render-tilstanden der opdateres
      * @param partialTick brøkdel af tick siden sidst opdatering (0.0–1.0)

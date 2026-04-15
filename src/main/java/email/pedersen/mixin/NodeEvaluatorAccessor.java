@@ -9,18 +9,15 @@ import org.spongepowered.asm.mixin.gen.Invoker;
 
 /**
  * Accessor-interface der eksponerer den beskyttede getNode()-metode fra NodeEvaluator.
- *
  * Hvorfor er dette nødvendigt?
  *   @Shadow i et Mixin kan kun referere til metoder der er direkte defineret i
  *   target-klassen — ikke nedarvet fra en superklasse. getNode() er defineret
  *   i NodeEvaluator men kun nedarvet (ikke overskrevet) i WalkNodeEvaluator.
  *   Derfor kan WalkNodeEvaluatorMixin ikke @Shadow den direkte.
- *
  *   @Invoker løser dette ved at definere et interface på NodeEvaluator selv,
  *   som ved kørsel caster til NodeEvaluator og kalder den beskyttede metode.
  *   WalkNodeEvaluatorMixin caster (NodeEvaluatorAccessor)(Object)this for at
  *   kalde invokeGetNode().
- *
  * getNode() og mob-feltet er begge i NodeEvaluator men ikke overskrevet/gentaget
  * i WalkNodeEvaluator — @Shadow i WalkNodeEvaluatorMixin kan derfor ikke finde dem.
  * Dette interface eksponerer begge via @Accessor og @Invoker direkte på NodeEvaluator.

@@ -26,7 +26,6 @@ public class ChestCoordinator {
     /**
      * Map over krav: mob'ens UUID → den kistes position der er krævet.
      * En mob kan kun kræve én kiste ad gangen.
-     *
      * ConcurrentHashMap er trådsikker: flere tråde kan læse/skrive samtidig
      * uden at data bliver ødelagt (i modsætning til en almindelig HashMap).
      */
@@ -36,7 +35,6 @@ public class ChestCoordinator {
      * Registrerer at en mob har "krav" på en kiste.
      * Erstatter automatisk et eventuelt tidligere krav fra samme mob.
      * Kaldes fra FindAndStealFromChestGoal når mob'en er inden for 4 blokke af kisten.
-     *
      * @param mobId UUID på den mob der kræver kisten
      * @param pos   positionen på kisten der kræves
      */
@@ -51,7 +49,6 @@ public class ChestCoordinator {
      *   - Mob'en har tømt kisten og leder efter en ny
      *   - Mob'ens mål stopper (solnedgang, død, snor)
      *   - Serveren stopper (via clearAll())
-     *
      * @param mobId UUID på den mob hvis krav skal frigives
      */
     public static void release(UUID mobId) {
@@ -64,7 +61,6 @@ public class ChestCoordinator {
      * inden den søger efter den nærmeste kiste.
      * Returnerer ConcurrentHashMap's values-view direkte — ingen kopi nødvendig,
      * da ConcurrentHashMap garanterer CME-fri iteration uden lås.
-     *
      * @return en live-view af alle aktuelt krævede kiste-positioner
      */
     public static Collection<BlockPos> getClaimedPositions() {

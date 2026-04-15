@@ -36,7 +36,6 @@ public abstract class ChestBlockEntityMixin {
      * Tjekker to betingelser:
      *   1. Vi er på serveren (!level.isClientSide()) — kister spores kun server-side
      *   2. Instansen er en ChestBlockEntity — vi er kun interesseret i kister
-     *
      * @param level den verden BlockEntity'en nu er en del af
      * @param ci    Mixin callback-info (ubrugt men påkrævet af API'et)
      */
