@@ -1,0 +1,20 @@
+{
+  "open_chest": {
+    "subtitle": "subtitles.chest_thief.open_chest",
+    "sounds": [
+      "chest_thief:open_chest"
+    ]
+  },
+  "steal_item": {
+    "subtitle": "subtitles.chest_thief.steal_item",
+    "sounds": [
+      "chest_thief:steal_item"
+    ]
+  },
+  "leaving": {
+    "subtitle": "subtitles.chest_thief.leaving",
+    "sounds": [
+      "chest_thief:leaving"
+    ]
+  }
+}

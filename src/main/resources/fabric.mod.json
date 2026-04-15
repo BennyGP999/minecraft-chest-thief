@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "id": "chest_thief",
+  "version": "${version}",
+  "name": "Chest Thief",
+  "description": "Introduces the Chest Thief mob – a cunning outcast who raids villages, breaks into homes, and steals your most valuable items to sell on the black market.",
+  "authors": [
+    "Pedersen"
+  ],
+  "contact": {
+    "issues": "https://github.com/pedersen/chest-thief-mod/issues",
+    "sources": "https://github.com/pedersen/chest-thief-mod"
+  },
+  "license": "MIT",
+  "icon": "assets/chest_thief/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "main": [
+      "email.pedersen.ChestThiefMod"
+    ],
+    "client": [
+      "email.pedersen.client.ChestThiefModClient"
+    ]
+  },
+  "mixins": [
+    "chest_thief.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.16.0",
+    "minecraft": "~26.1",
+    "java": ">=25",
+    "fabric-api": "*"
+  }
+}
