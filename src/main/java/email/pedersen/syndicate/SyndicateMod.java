@@ -427,6 +427,13 @@ public class SyndicateMod implements ModInitializer {
                 SyndicateBaseManager.addBase(base);
             }
             LOGGER.info("Loaded {} syndicate base(s) from disk", savedData.getBases().size());
+
+            // Ny verden: ingen baser gemt → force-placer én ved spawn med det samme.
+            // Sikrer at /locate og syndikatskort virker fra første sekund, selv i creative mode.
+            // Engangsoperation — kører aldrig igen når savedData indeholder mindst én base.
+            if (savedData.getBases().isEmpty()) {
+                prePlaceFirstBase(overworld, savedData);
+            }
         });
 
         // CHUNK_LOAD: registrér kandidat-chunks til validering næste tick.
@@ -630,6 +637,72 @@ public class SyndicateMod implements ModInitializer {
      * @param origin  spillerens position — udgangspunkt for spiral-søgningen
      * @return den nærmeste ubesøgte kandidat-chunk, eller null hvis alle celler er afvist
      */
+    /**
+     * Force-placer den nærmeste syndikats-base ved spawn på en ny verden.
+     *
+     * Kaldes kun ved SERVER_STARTED når savedData er tom (første opstart af en ny verden).
+     * Formål: creative-mode-spillere og nye spillere kan bruge /locate med det samme —
+     * de behøver ikke flyve rundt og vente på at kandidat-chunken loader naturligt.
+     *
+     * Strategi:
+     *   1. Spiral-søg fra celle (0,0) udad — dvs. nærmest spawn først.
+     *   2. For hvert forsøg: force-load et 7×7-chunks-område (radius 3) rundt om kandidaten.
+     *      Dette sikrer at validate()'s chunk-guard bestås uanset strukturens fodaftryk.
+     *   3. Kald tryPlaceBase() — placerer basen eller hard-rejecter cellen ved uegnet terræn.
+     *   4. Stop ved første vellykkede placering.
+     *
+     * Performance: engangsoperation. 49 chunks × first-time-generation koster typisk 2-5 sek.
+     * Spawn-chunks er ofte allerede pre-genereret af Minecraft, så det reelle overhead er lavere.
+     *
+     * @param level     overworld — baser spawner kun her
+     * @param savedData persistens-laget — tjekkes for hard-rejections, opdateres ved placering
+     */
+    private static void prePlaceFirstBase(ServerLevel level, SyndicateSavedData savedData) {
+        SyndicateConfig config = SyndicateConfig.getInstance();
+        long seed = level.getSeed();
+        int spacing = config.getBaseSpacingChunks();
+        int separation = config.getBaseSeparationChunks();
+        ResourceKey<Level> dimension = level.dimension();
+
+        LOGGER.info("Ny verden detekteret — force-placer første syndikats-base ved spawn...");
+
+        // Spiral-søgning: radius 0 = celle (0,0) ved spawn, radius 1 = 8 naboer, osv.
+        for (int radius = 0; radius <= 3; radius++) {
+            for (int dx = -radius; dx <= radius; dx++) {
+                for (int dz = -radius; dz <= radius; dz++) {
+                    // Spring det indre af kvadratet over — det er dækket af lavere radii
+                    if (Math.abs(dx) != radius && Math.abs(dz) != radius) continue;
+
+                    int cellX = dx;
+                    int cellZ = dz;
+                    if (savedData.isHardRejected(cellX, cellZ, dimension)) continue;
+
+                    ChunkPos candidate = SyndicateBasePlacer.computeCandidate(
+                            cellX, cellZ, seed, spacing, separation);
+
+                    // Force-load et 7×7-chunks-område (3 chunks radius) rundt om kandidaten.
+                    // validate() kræver alle chunks i strukturens fodaftryk + 1 margins-chunk.
+                    // 3 chunks radius dækker selv de største tænkelige strukturstørrelser.
+                    // level.getChunk() blokerer til chunken er fuldt genereret — synkront kald.
+                    int LOAD_RADIUS = 3;
+                    for (int cx = candidate.x() - LOAD_RADIUS; cx <= candidate.x() + LOAD_RADIUS; cx++) {
+                        for (int cz = candidate.z() - LOAD_RADIUS; cz <= candidate.z() + LOAD_RADIUS; cz++) {
+                            level.getChunk(cx, cz);
+                        }
+                    }
+
+                    boolean placed = SyndicateBasePlacer.tryPlaceBase(level, candidate);
+                    if (placed) {
+                        LOGGER.info("Første syndikats-base placeret ved celle ({},{}) — /locate klar", cellX, cellZ);
+                        return;
+                    }
+                }
+            }
+        }
+        LOGGER.warn("Kunne ikke force-placere første syndikats-base — alle celler ved spawn afvist. " +
+                "Basen vil placeres naturligt når spilleren udforsker.");
+    }
+
     @org.jetbrains.annotations.Nullable
     private static ChunkPos findNearestTheoreticalCandidate(ServerLevel level, BlockPos origin) {
         SyndicateConfig config = SyndicateConfig.getInstance();
