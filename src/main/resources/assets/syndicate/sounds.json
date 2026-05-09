@@ -1,0 +1,21 @@
+{
+  "entity.syndicate_guard.shoot": {
+    "sounds": [
+      {
+        "name": "syndicate:guard_shoot",
+        "volume": 1.0,
+        "pitch": 1.0,
+        "type": "file"
+      }
+    ]
+  },
+  "entity.carrot_arrow.hit": {
+    "sounds": [
+      { "name": "syndicate:carrot_hit", "volume": 1.0, "pitch": 0.75, "type": "file" },
+      { "name": "syndicate:carrot_hit", "volume": 1.0, "pitch": 0.85, "type": "file" },
+      { "name": "syndicate:carrot_hit", "volume": 1.0, "pitch": 0.9,  "type": "file" },
+      { "name": "syndicate:carrot_hit", "volume": 1.0, "pitch": 0.95, "type": "file" },
+      { "name": "syndicate:carrot_hit", "volume": 1.0, "pitch": 1.0,  "type": "file" }
+    ]
+  }
+}

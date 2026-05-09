@@ -1,0 +1,1261 @@
+package email.pedersen.syndicate;
+
+import email.pedersen.chestthief.config.ChestThiefConfig;
+import email.pedersen.syndicate.config.SyndicateConfig;
+import email.pedersen.syndicate.mixin.StructureManagerAccessor;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
+import net.minecraft.core.HolderGetter;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.NbtAccounter;
+import net.minecraft.nbt.NbtIo;
+import net.minecraft.resources.Identifier;
+import net.minecraft.resources.ResourceKey;
+import net.minecraft.server.level.ServerLevel;
+import net.minecraft.tags.BlockTags;
+import net.minecraft.tags.FluidTags;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.util.RandomSource;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
+import net.minecraft.world.level.ChunkPos;
+import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.Rotation;
+import net.minecraft.world.level.block.entity.ChestBlockEntity;
+import net.minecraft.world.level.levelgen.Heightmap;
+import net.minecraft.world.level.LevelReader;
+import net.minecraft.world.level.StructureManager;
+import net.minecraft.world.level.levelgen.structure.BoundingBox;
+import net.minecraft.world.level.levelgen.structure.Structure;
+import net.minecraft.world.level.levelgen.structure.StructureCheck;
+import net.minecraft.world.level.levelgen.structure.StructureStart;
+import net.minecraft.world.level.levelgen.structure.pieces.PiecesContainer;
+import net.minecraft.world.level.levelgen.structure.templatesystem.StructurePlaceSettings;
+import net.minecraft.world.level.levelgen.structure.templatesystem.StructureProcessor;
+import net.minecraft.world.level.levelgen.structure.templatesystem.StructureProcessorType;
+import net.minecraft.world.level.levelgen.structure.templatesystem.StructureTemplate;
+import net.minecraft.world.phys.AABB;
+import org.jetbrains.annotations.Nullable;
+
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Queue;
+import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
+
+/**
+ * Beregner og validerer placeringen af en syndikats-base i verdenen.
+ *
+ * Klassen er ansvarlig for to ting (begge statiske hjælpemetoder, ingen instans-tilstand):
+ *
+ *   S05 — Chunk-baseret placeringslogik:
+ *     Verdenen opdeles i et gitter af "region-celler" à spacing×spacing chunks.
+ *     Inden for hver celle beregnes én deterministisk kandidat-chunk via et seeded RNG.
+ *     Determinismen sikrer at samme celle altid giver samme kandidat uanset hvornår
+ *     eller på hvilken server den evalueres — vigtig for reproducerbarhed.
+ *
+ *   S06 — Valideringscheck:
+ *     Inden en .nbt-struktur stamps, køres en serie af checks i fail-fast rækkefølge
+ *     (billigste først). Afvisninger kategoriseres som "bløde" (midlertidigt) eller
+ *     "hårde" (permanent caches i SyndicateSavedData). Se validate() for detaljer.
+ *
+ * Trigger: Fabric's ServerChunkEvents.CHUNK_LOAD (registreres i TASK-S07).
+ * Denne klasse indeholder ingen event-lyttere — kun ren beregning.
+ *
+ * Performance:
+ *   Under normale omstændigheder returnerer 99%+ af kald fra validate() i O(1)
+ *   via membership-guard og hard-rejection-cache. De dyrere blok-scanninger
+ *   køres kun for nye kandidat-chunks der ikke allerede er evaluerede.
+ *   Se syndicate-tasks.md TASK-S06 for detaljeret performance-analyse.
+ */
+public class SyndicateBasePlacer {
+
+    /**
+     * Whitelist af blokke der anses for "naturlige" — bruges af isNaturalBlock().
+     *
+     * Listen dækker kun terræn- og undergrunds-blokke der ikke er dækket af block-tags.
+     * Vegetation, træer og blomster håndteres via tags i isNaturalBlock() — det er mere
+     * robust end at opremse hver enkelt blok, da nye biom-blokke (leaf_litter, torchflower
+     * m.fl.) automatisk dækkes af de relevante tags uden at listen skal opdateres.
+     */
+    private static final Set<Block> NATURAL_BLOCKS = Set.of(
+            // ── Sten og jord ──────────────────────────────────────────────────
+            Blocks.STONE, Blocks.DEEPSLATE, Blocks.COBBLED_DEEPSLATE,
+            Blocks.DIRT, Blocks.COARSE_DIRT, Blocks.ROOTED_DIRT,
+            Blocks.GRASS_BLOCK, Blocks.PODZOL, Blocks.MYCELIUM,
+            Blocks.GRAVEL, Blocks.SAND, Blocks.SANDSTONE,
+            Blocks.RED_SAND, Blocks.RED_SANDSTONE,
+            Blocks.GRANITE, Blocks.DIORITE, Blocks.ANDESITE,
+            Blocks.TUFF, Blocks.CALCITE, Blocks.DRIPSTONE_BLOCK,
+            Blocks.CLAY, Blocks.BEDROCK, Blocks.OBSIDIAN, Blocks.MAGMA_BLOCK,
+            // ── Malme ─────────────────────────────────────────────────────────
+            Blocks.COAL_ORE, Blocks.IRON_ORE, Blocks.COPPER_ORE,
+            Blocks.GOLD_ORE, Blocks.REDSTONE_ORE, Blocks.LAPIS_ORE,
+            Blocks.DIAMOND_ORE, Blocks.EMERALD_ORE,
+            Blocks.DEEPSLATE_COAL_ORE, Blocks.DEEPSLATE_IRON_ORE, Blocks.DEEPSLATE_COPPER_ORE,
+            Blocks.DEEPSLATE_GOLD_ORE, Blocks.DEEPSLATE_REDSTONE_ORE, Blocks.DEEPSLATE_LAPIS_ORE,
+            Blocks.DEEPSLATE_DIAMOND_ORE, Blocks.DEEPSLATE_EMERALD_ORE,
+            // ── Sne og is ─────────────────────────────────────────────────────
+            Blocks.SNOW_BLOCK, Blocks.PACKED_ICE, Blocks.BLUE_ICE,
+            // ── Terracotta (badlands) ─────────────────────────────────────────
+            Blocks.TERRACOTTA,
+            Blocks.WHITE_TERRACOTTA, Blocks.ORANGE_TERRACOTTA, Blocks.MAGENTA_TERRACOTTA,
+            Blocks.LIGHT_BLUE_TERRACOTTA, Blocks.YELLOW_TERRACOTTA, Blocks.LIME_TERRACOTTA,
+            Blocks.PINK_TERRACOTTA, Blocks.GRAY_TERRACOTTA, Blocks.LIGHT_GRAY_TERRACOTTA,
+            Blocks.CYAN_TERRACOTTA, Blocks.PURPLE_TERRACOTTA, Blocks.BLUE_TERRACOTTA,
+            Blocks.BROWN_TERRACOTTA, Blocks.GREEN_TERRACOTTA, Blocks.RED_TERRACOTTA,
+            Blocks.BLACK_TERRACOTTA,
+            // ── Mos, mudder og mangrove ───────────────────────────────────────
+            Blocks.MOSS_BLOCK, Blocks.MUD, Blocks.MUDDY_MANGROVE_ROOTS,
+            Blocks.MANGROVE_ROOTS,
+            // ── Amethyst geode ────────────────────────────────────────────────
+            Blocks.AMETHYST_BLOCK, Blocks.BUDDING_AMETHYST,
+            Blocks.SMALL_AMETHYST_BUD, Blocks.MEDIUM_AMETHYST_BUD,
+            Blocks.LARGE_AMETHYST_BUD, Blocks.AMETHYST_CLUSTER,
+            // ── Cave-blokke ───────────────────────────────────────────────────
+            Blocks.POINTED_DRIPSTONE, Blocks.GLOW_LICHEN, Blocks.SPORE_BLOSSOM,
+            Blocks.HANGING_ROOTS, Blocks.SCULK, Blocks.SCULK_VEIN,
+            Blocks.SCULK_CATALYST, Blocks.SCULK_SENSOR, Blocks.SCULK_SHRIEKER,
+            // ── Svampe (plant og storsvamp-blokke) ───────────────────────────
+            // Svampe-planter er IKKE i BlockTags.REPLACEABLE i denne MC-version
+            Blocks.BROWN_MUSHROOM, Blocks.RED_MUSHROOM,
+            Blocks.BROWN_MUSHROOM_BLOCK, Blocks.RED_MUSHROOM_BLOCK, Blocks.MUSHROOM_STEM,
+            // ── Vegetation der ikke er dækket af REPLACEABLE-tagget ───────────
+            Blocks.CACTUS,           // solid, ikke replaceable
+            Blocks.VINE,             // klatreplante på træer
+            Blocks.BAMBOO, Blocks.BAMBOO_SAPLING,
+            Blocks.SUGAR_CANE,
+            Blocks.LILY_PAD,
+            Blocks.SWEET_BERRY_BUSH,
+            Blocks.SEAGRASS, Blocks.TALL_SEAGRASS,
+            Blocks.KELP, Blocks.KELP_PLANT,
+            Blocks.CAVE_VINES, Blocks.CAVE_VINES_PLANT,
+            Blocks.TWISTING_VINES, Blocks.TWISTING_VINES_PLANT,
+            Blocks.WEEPING_VINES, Blocks.WEEPING_VINES_PLANT,
+            // ── Pale Garden (1.21.4) ──────────────────────────────────────────
+            // Pale Oak er dækket af LOGS/LEAVES-tags; disse er ikke
+            Blocks.PALE_MOSS_BLOCK, Blocks.PALE_HANGING_MOSS,
+            // ── Luft og vand ──────────────────────────────────────────────────
+            Blocks.AIR, Blocks.CAVE_AIR, Blocks.WATER, Blocks.LAVA
+    );
+
+    /**
+     * Markørblok der i .nbt-filen angiver skaktens indgang til den underjordiske base.
+     *
+     * Placering i .nbt'en: én blok, lige over det øverste lag af skakten (det vil sige
+     * i det allertopperste lag af strukturfilen). Koden bruger markøren til to ting:
+     *   1. Forankre strukturen korrekt: markørens verden-Y sættes til terrænets heightmap-Y,
+     *      og strukturens placering beregnes baglæns derfra.
+     *   2. Finde skaktens XZ i verden: bruges til flat 3x3-check og til at erstatte
+     *      markøren med luft efter stamping (S07).
+     *
+     * Dead tube coral block er valgt fordi den:
+     *   - Forekommer aldrig naturligt under terræn (ingen false positives i NATURAL_BLOCKS-check)
+     *   - Er let at spotte visuelt i en struktur-editor
+     *   - Ikke bruges af andre markeringskonventioner i projektet
+     *     (emerald_block = vagter, chest = loot — intet overlap)
+     */
+    public static final Block SHAFT_MARKER = Blocks.DEAD_TUBE_CORAL_BLOCK;
+
+    /**
+     * Cachet strukturskabelon — indlæses første gang fra JAR-ressourcen, derefter
+     * genbruges direkte fra hukommelsen. StructureTemplate er immutable efter load(),
+     * så deling på tværs af valideringsforsøg er trådsikkert.
+     * volatile sikrer at skrivningen fra loadTemplate() er synlig på alle tråde.
+     */
+    @Nullable
+    private static volatile StructureTemplate cachedTemplate = null;
+
+    // Utility-klasse — ingen instanser
+    private SyndicateBasePlacer() {}
+
+    // =========================================================================
+    // S05 — Chunk-baseret placeringslogik
+    // =========================================================================
+
+    /**
+     * Beregner gitter-cellens koordinater for en given chunk.
+     *
+     * Verdenen er opdelt i et gitter af kvadratiske celler à spacingChunks×spacingChunks chunks.
+     * floorDiv bruges (ikke heltalsdivision "/") for at håndtere negative chunk-koordinater korrekt:
+     *   chunk -1 med spacing 64 → cell -1 (ikke 0), fordi floorDiv(-1, 64) = -1.
+     * Standard "/" ville give -1/64 = 0, som er forkert for negative koordinater.
+     *
+     * @param chunk        den chunk hvis celle skal beregnes
+     * @param spacingChunks cellestørrelse i chunks (fra SyndicateConfig)
+     * @return {cellX, cellZ} — cellens koordinater i gitteret
+     */
+    public static int[] computeCell(ChunkPos chunk, int spacingChunks) {
+        // chunk.x() og chunk.z() er record-accessors — ChunkPos er et Java record
+        int cellX = Math.floorDiv(chunk.x(), spacingChunks);
+        int cellZ = Math.floorDiv(chunk.z(), spacingChunks);
+        return new int[]{cellX, cellZ};
+    }
+
+    /**
+     * Beregner en deterministisk kandidat-chunk inden for en gitter-celle.
+     *
+     * Algoritme:
+     * 1. Kombiner verdensfrøet med cellens koordinater til et unikt seed:
+     *    Multiplikationskonstanterne er store primtal der giver god spredning
+     *    (samme teknik bruger Minecrafts eget chunk-seeding for strukturer).
+     * 2. Opret et seeded RNG — samme seed → samme resultat, altid.
+     * 3. Beregn et tilfældigt offset inden for cellen, men mindst separationChunks
+     *    chunks fra enhver cellegrænse, så baser fra naboceller ikke spawner
+     *    for tæt på hinanden på tværs af grænsen.
+     *
+     * Eksempel med spacing=64, separation=24:
+     *   Offset-vindue = [24, 39] (64 - 24 - 1 = 39), dvs. 16 mulige positions.
+     *   Kandidaten er garanteret mindst 24 chunks fra alle fire cellegrænser.
+     *
+     * @param cellX            cellens X-koordinat i gitteret
+     * @param cellZ            cellens Z-koordinat i gitteret
+     * @param worldSeed        verdensfrøet (fra ServerLevel.getSeed())
+     * @param spacingChunks    cellestørrelse i chunks
+     * @param separationChunks minimumafstand til cellegrænsen i chunks
+     * @return den deterministiske kandidat-chunk for denne celle
+     */
+    public static ChunkPos computeCandidate(int cellX, int cellZ, long worldSeed,
+                                             int spacingChunks, int separationChunks) {
+        // Seed kombinerer verdensfrø med cellekoordinater via store primtal.
+        // Multiplikationen sikrer at (cellX=1, cellZ=0) og (cellX=0, cellZ=1)
+        // giver vidt forskellige seeds — uden primtal ville nærliggende celler
+        // risikere at generere næsten ens offsets.
+        long seed = worldSeed
+                + (long) cellX * 341873128712L
+                + (long) cellZ * 132897987541L;
+        RandomSource rng = RandomSource.create(seed);
+
+        // Beregn offset-vinduet: minimum separation fra cellekant, maksimum (spacing - separation - 1)
+        int minOffset = separationChunks;
+        int maxOffset = spacingChunks - separationChunks - 1;
+
+        // Hvis vinduet er tomt (spacing for lav eller separation for høj), brug cellens centrum
+        if (maxOffset <= minOffset) {
+            return new ChunkPos(
+                    cellX * spacingChunks + spacingChunks / 2,
+                    cellZ * spacingChunks + spacingChunks / 2
+            );
+        }
+
+        int window = maxOffset - minOffset + 1;
+        int offsetX = minOffset + rng.nextInt(window);
+        int offsetZ = minOffset + rng.nextInt(window);
+
+        return new ChunkPos(
+                cellX * spacingChunks + offsetX,
+                cellZ * spacingChunks + offsetZ
+        );
+    }
+
+    // =========================================================================
+    // S06 — Valideringscheck
+    // =========================================================================
+
+    /**
+     * Validerer om en kandidat-chunk er egnet til at huse en syndikats-base.
+     *
+     * Køres KUN på server-main-thread, og KUN når chunken alligevel er loadet
+     * (via ServerChunkEvents.CHUNK_LOAD — se TASK-S07). Force-loading sker aldrig.
+     *
+     * Returnerer strukturens placerings-oprindelse (BlockPos) hvis alle checks er bestået,
+     * ellers null. Den returnerede BlockPos bruges direkte som origin til
+     * StructureTemplate.placeInWorld() i S07.
+     *
+     * Forankring via SHAFT_MARKER:
+     *   Koden finder dead_tube_coral_block i template'en, beregner dens roterede lokale pos,
+     *   og sætter strukturen så markøren lander præcis på terrænets heightmap-Y.
+     *   Formlen: placeOrigin = surface.subtract(rotatedMarkerLocalPos)
+     *
+     * Checkene kører i fail-fast rækkefølge — billigst først:
+     *
+     *   1. Membership-guard — O(1): eksisterer der allerede en base i cellen?
+     *   2. Hard-rejection-cache — O(1): er cellen permanent forkastet?
+     *   3. Hav-check — O(1): er overfladen under vand? → hard reject (hav er permanent)
+     *   Chunk-guard — O(footprint-chunks): er alle chunks footprint+margin dækker loadede?
+     *                 KRITISK: skal køre inden ethvert kald der kan ramme nabochunks.
+     *                 getHeight()/getBlockState() blokerer main-thread på uloadede chunks.
+     *   4. Ikke-naturlige blokke — O(volumen): player-blokke → hard reject
+     *
+     * Hard vs. soft rejection:
+     *   Hard: årsagen er permanent (player-blokke, vanilla-strukturer).
+     *         Gemmes i SyndicateSavedData.hardRejectedCells.
+     *   Soft: årsagen er midlertidig (nabochunk ikke loadet, hule kan lukke).
+     *         Ingen caching — prøv igen ved næste chunk-load event.
+     *
+     * @param level     serververdenen — bruges til blokopslag og structurmanager
+     * @param cellX     cellens X-koordinat (beregnet af computeCell)
+     * @param cellZ     cellens Z-koordinat (beregnet af computeCell)
+     * @param candidate kandidat-chunken der valideres
+     * @param template  strukturskabelonen — bruges til at beregne AABB-størrelse
+     * @param rotation  den valgte rotation for strukturen
+     * @return placeOrigin — den BlockPos der bruges som origin til placeInWorld(), eller null ved afvisning
+     */
+    @Nullable
+    public static BlockPos validate(ServerLevel level, int cellX, int cellZ,
+                                     ChunkPos candidate, StructureTemplate template,
+                                     Rotation rotation, SyndicateSavedData savedData) {
+        // TEMP DEBUG: timing og detaljerede afvisningsårsager
+        long t0 = System.nanoTime();
+        SyndicateMod.LOGGER.debug("Validating candidate chunk {} for cell ({},{}), rotation {}",
+                candidate, cellX, cellZ, rotation);
+
+        SyndicateConfig config = SyndicateConfig.getInstance();
+        ResourceKey<Level> dimension = level.dimension();
+
+        // ── Check 1: Membership-guard ─────────────────────────────────────────
+        if (SyndicateBaseManager.hasBaseInCell(cellX, cellZ, dimension, config.getBaseSpacingChunks())) {
+            SyndicateMod.LOGGER.debug("Candidate rejected — cell already has an active base ({}ms)", ms(t0));
+            return null;
+        }
+
+        // ── Check 2: Hard-rejection-cache ─────────────────────────────────────
+        if (savedData.isHardRejected(cellX, cellZ, dimension)) {
+            SyndicateMod.LOGGER.debug("Candidate rejected — cell is permanently blacklisted ({}ms)", ms(t0));
+            return null;
+        }
+
+        // ── Check 3: Hav-check ────────────────────────────────────────────────
+        BlockPos candidateBlock = candidate.getMiddleBlockPosition(64);
+        // findGroundSurface() scanner nedad forbi trætoppe og vegetation
+        // og returnerer luftblokken over det første solide terræn-lag.
+        BlockPos surface = findGroundSurface(level, candidateBlock);
+        BlockPos surfaceBelow = surface.below();
+        if (level.getFluidState(surfaceBelow).is(FluidTags.WATER)
+                || level.getFluidState(surface).is(FluidTags.WATER)) {
+            // Hav/sø-overflader er permanente — hard-reject så cellen aldrig genprøves
+            savedData.addHardRejected(cellX, cellZ, dimension);
+            SyndicateMod.LOGGER.debug("Candidate rejected (permanent) — surface underwater at {} ({}ms)",
+                    surface, ms(t0));
+            return null;
+        }
+
+        // ── Find SHAFT_MARKER og beregn placeOrigin ───────────────────────────
+        BlockPos rotatedMarkerLocalPos = findShaftMarker(template, rotation);
+        if (rotatedMarkerLocalPos == null) {
+            SyndicateMod.LOGGER.error("syndicate_base2.nbt is missing the shaft marker (dead_tube_coral_block) — base placement disabled");
+            return null;
+        }
+        BlockPos placeOrigin = surface.subtract(rotatedMarkerLocalPos);
+
+        // ── Beregn AABB ───────────────────────────────────────────────────────
+        AABB footprint = computeFootprintAABB(placeOrigin, template, rotation);
+
+        // ── Chunk-guard ───────────────────────────────────────────────────────
+        {
+            int minCX = ((int) footprint.minX) >> 4;
+            int maxCX = ((int) footprint.maxX) >> 4;
+            int minCZ = ((int) footprint.minZ) >> 4;
+            int maxCZ = ((int) footprint.maxZ) >> 4;
+            for (int cx = minCX - 1; cx <= maxCX + 1; cx++) {
+                for (int cz = minCZ - 1; cz <= maxCZ + 1; cz++) {
+                    if (!level.hasChunk(cx, cz)) {
+                        SyndicateMod.LOGGER.debug(
+                                "Candidate skipped — neighbor chunk [{},{}] not yet loaded ({}ms)",
+                                cx, cz, ms(t0));
+                        return null;
+                    }
+                }
+            }
+        }
+        SyndicateMod.LOGGER.debug("Chunk boundary check passed — footprint={} ({}ms)", footprint, ms(t0));
+
+        // ── Check 4: Ikke-naturlige blokke ────────────────────────────────────
+        int minX = (int) footprint.minX;
+        int maxX = (int) footprint.maxX;
+        int minY = (int) footprint.minY;
+        int maxY = (int) footprint.maxY;
+        int minZ = (int) footprint.minZ;
+        int maxZ = (int) footprint.maxZ;
+        int blocksScanned = 0;
+        long t4 = System.nanoTime();
+
+        for (int x = minX; x <= maxX; x++) {
+            for (int y = minY; y <= maxY; y++) {
+                for (int z = minZ; z <= maxZ; z++) {
+                    blocksScanned++;
+                    BlockState state = level.getBlockState(new BlockPos(x, y, z));
+                    if (!isNaturalBlock(state)) {
+                        savedData.addHardRejected(cellX, cellZ, dimension);
+                        SyndicateMod.LOGGER.debug(
+                                "Candidate rejected (permanent) — player-placed block {} at [{},{},{}], scanned {} blocks in {}ms (total {}ms)",
+                                state.getBlock(), x, y, z, blocksScanned, ms(t4), ms(t0));
+                        return null;
+                    }
+                    // Vand eller lava i strukturens volumen vil strømme ind i rummene
+                    // når terrænet udhuler. Frosne søer har vand direkte under isen —
+                    // det opdages her og hard-rejectes, da vand er permanent.
+                    if (!state.getFluidState().isEmpty()) {
+                        savedData.addHardRejected(cellX, cellZ, dimension);
+                        SyndicateMod.LOGGER.debug(
+                                "Candidate rejected (permanent) — fluid {} at [{},{},{}], scanned {} blocks in {}ms (total {}ms)",
+                                state.getFluidState().getType(), x, y, z, blocksScanned, ms(t4), ms(t0));
+                        return null;
+                    }
+                }
+            }
+        }
+        SyndicateMod.LOGGER.debug("Block scan passed — {} blocks scanned in {}ms (total {}ms)",
+                blocksScanned, ms(t4), ms(t0));
+
+        SyndicateMod.LOGGER.debug("All validation checks passed — origin={} (total {}ms)",
+                placeOrigin, ms(t0));
+        return placeOrigin;
+    }
+
+    // =========================================================================
+    // Private hjælpemetoder
+    // =========================================================================
+
+    /**
+     * Finder SHAFT_MARKER-blokken i template'en og returnerer dens roterede lokale position.
+     *
+     * Bruger filterBlocks() med en StructurePlaceSettings der indeholder den valgte rotation.
+     * filterBlocks() returnerer positionerne EFTER rotation er påført — dvs. den returnerede
+     * position er relativ til strukturens oprindelse (BlockPos.ZERO) og svarer præcis til
+     * det offset der bruges i placeInWorld(). Formlen:
+     *
+     *   worldPos(markør) = placeOrigin.offset(rotatedMarkerLocalPos)
+     *   → placeOrigin = surface.subtract(rotatedMarkerLocalPos)
+     *
+     * Rotation ændrer markørens XZ-position (og evt. spejler den), men ændrer ikke Y —
+     * markøren forbliver i det øverste lag af strukturen uanset rotation.
+     *
+     * @param template  strukturskabelonen der scannes
+     * @param rotation  den valgte rotation
+     * @return markørens roterede lokale BlockPos, eller null hvis markøren ikke findes
+     */
+    @Nullable
+    private static BlockPos findShaftMarker(StructureTemplate template, Rotation rotation) {
+        // StructurePlaceSettings med NONE som mirror (ingen spejling) og den valgte rotation.
+        // BlockPos.ZERO som pivot sikrer at rotationen sker om strukturens nord-vest-hjørne,
+        // samme pivot som placeInWorld() bruger som standard.
+        StructurePlaceSettings settings = new StructurePlaceSettings().setRotation(rotation);
+        List<StructureTemplate.StructureBlockInfo> markers =
+                template.filterBlocks(BlockPos.ZERO, settings, SHAFT_MARKER);
+
+        if (markers.isEmpty()) return null;
+        if (markers.size() > 1) {
+            SyndicateMod.LOGGER.warn(
+                    "syndicate_base2.nbt contains {} shaft markers — expected 1, using first",
+                    markers.size());
+        }
+        return markers.get(0).pos();
+    }
+
+    /**
+     * Beregner det fulde AABB strukturen vil optage efter stamping, korrekt for alle rotationer.
+     *
+     * MC's CW_90-rotation bruger new_x = -original_z, new_z = original_x, hvilket betyder at
+     * strukturen kan strække sig i NEGATIV X/Z-retning fra placeOrigin afhængigt af rotation.
+     * En naiv "placeOrigin + size" beregning giver et forkert AABB og scanner det forkerte område.
+     *
+     * For hver rotation beregnes de faktiske min/max offsets fra placeOrigin:
+     *   NONE:           X [0, sx],    Z [0, sz]
+     *   CLOCKWISE_90:   X [-sz, 0],   Z [0, sx]   (CW: new_x = -old_z, new_z = old_x)
+     *   CLOCKWISE_180:  X [-sx, 0],   Z [-sz, 0]
+     *   COUNTERCLOCKWISE_90: X [0, sz], Z [-sx, 0]
+     *
+     * @param placeOrigin  strukturens placerings-oprindelse (output fra validate())
+     * @param template     strukturskabelonen
+     * @param rotation     den valgte rotation
+     * @return det absolutte AABB strukturen vil optage i verdenen
+     */
+    private static AABB computeFootprintAABB(BlockPos placeOrigin, StructureTemplate template,
+                                              Rotation rotation) {
+        // Brug uroteret størrelse — vi beregner retningen selv ud fra rotationsformlen
+        net.minecraft.core.Vec3i size = template.getSize();
+        int sx = size.getX();
+        int sy = size.getY();
+        int sz = size.getZ();
+
+        int offMinX, offMaxX, offMinZ, offMaxZ;
+        switch (rotation) {
+            case CLOCKWISE_90 ->        { offMinX = -sz; offMaxX = 0;  offMinZ = 0;   offMaxZ = sx; }
+            case CLOCKWISE_180 ->       { offMinX = -sx; offMaxX = 0;  offMinZ = -sz; offMaxZ = 0; }
+            case COUNTERCLOCKWISE_90 -> { offMinX = 0;   offMaxX = sz; offMinZ = -sx; offMaxZ = 0; }
+            default ->                  { offMinX = 0;   offMaxX = sx; offMinZ = 0;   offMaxZ = sz; }
+        }
+
+        return new AABB(
+                placeOrigin.getX() + offMinX, placeOrigin.getY(),      placeOrigin.getZ() + offMinZ,
+                placeOrigin.getX() + offMaxX, placeOrigin.getY() + sy, placeOrigin.getZ() + offMaxZ
+        );
+    }
+
+    /** TEMP DEBUG: konverterer nanoTime-delta til millisekunder med én decimal. */
+    private static String ms(long startNano) {
+        return String.format("%.1f", (System.nanoTime() - startNano) / 1_000_000.0);
+    }
+
+    /**
+     * Tjekker at alle fem yder-flader (ekskl. top) af det underjordiske AABB
+     * grænser op til solide blokke.
+     *
+     * En "solid" blok er isSolid() == true OG ikke flydende vand.
+     * Cave_air og regulær air tæller som ikke-solid.
+     *
+     * De fem flader: NORTH (z=minZ-1), SOUTH (z=maxZ+1), WEST (x=minX-1),
+     * EAST (x=maxX+1), BOTTOM (y=minY-1).
+     * TOP (y=maxY+1) springes over — den er altid luft på terrænoverfladen.
+     *
+     * @return false hvis én eller flere randblokke er ikke-solide (blød afvisning)
+     */
+    private static boolean isPerimeterSolid(ServerLevel level,
+                                             int minX, int maxX, int minY, int maxY,
+                                             int minZ, int maxZ) {
+        BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
+
+        // NORTH-flade: z = minZ-1
+        for (int x = minX; x <= maxX; x++) {
+            for (int y = minY; y <= maxY; y++) {
+                mutable.set(x, y, minZ - 1);
+                if (!isSolid(level, mutable)) return false;
+            }
+        }
+
+        // SOUTH-flade: z = maxZ+1
+        for (int x = minX; x <= maxX; x++) {
+            for (int y = minY; y <= maxY; y++) {
+                mutable.set(x, y, maxZ + 1);
+                if (!isSolid(level, mutable)) return false;
+            }
+        }
+
+        // WEST-flade: x = minX-1
+        for (int z = minZ; z <= maxZ; z++) {
+            for (int y = minY; y <= maxY; y++) {
+                mutable.set(minX - 1, y, z);
+                if (!isSolid(level, mutable)) return false;
+            }
+        }
+
+        // EAST-flade: x = maxX+1
+        for (int z = minZ; z <= maxZ; z++) {
+            for (int y = minY; y <= maxY; y++) {
+                mutable.set(maxX + 1, y, z);
+                if (!isSolid(level, mutable)) return false;
+            }
+        }
+
+        // BOTTOM-flade: y = minY-1
+        for (int x = minX; x <= maxX; x++) {
+            for (int z = minZ; z <= maxZ; z++) {
+                mutable.set(x, minY - 1, z);
+                if (!isSolid(level, mutable)) return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Returnerer om en blok er solid og ikke flydende vand.
+     *
+     * Flydende vand rapporteres som "solid" af visse metoder i Minecraft, men
+     * en undervandsbase er uønsket — vi ekskluderer det eksplicit.
+     *
+     * @param level   verdenen
+     * @param pos     blok-positionen der tjekkes
+     * @return true hvis blokken er solid og ikke vandfyldt
+     */
+    private static boolean isSolid(ServerLevel level, BlockPos pos) {
+        var state = level.getBlockState(pos);
+        return state.isSolid() && !state.getFluidState().is(FluidTags.WATER);
+    }
+
+    /**
+     * Finder den faktiske terrænoverflade under træer og vegetation.
+     *
+     * WORLD_SURFACE returnerer toppen af det højeste ikke-luft-objekt, som kan være et
+     * løvblad eller en træstamme. Vi scanner nedad gennem blade, stammer, planter og
+     * andre "naturlige over-jords" blokke, og returnerer luftblokken over det første
+     * solide terræn-lag (jord, sten, sand osv.).
+     *
+     * @param level   serverniveauet
+     * @param column  en vilkårlig position i den kolonne der søges (X og Z bruges, Y ignoreres)
+     * @return luftblokken direkte over det øverste solide terræn-lag
+     */
+    private static BlockPos findGroundSurface(ServerLevel level, BlockPos column) {
+        // Start ved det højeste ikke-luft-objekt og scan nedad
+        BlockPos pos = level.getHeightmapPos(Heightmap.Types.WORLD_SURFACE, column).below();
+        while (pos.getY() > level.getMinY()) {
+            BlockState state = level.getBlockState(pos);
+            // Spring over luft og vegetationsblokke der kun forekommer over terræn
+            if (!state.isAir()
+                    && !state.is(BlockTags.LEAVES)
+                    && !state.is(BlockTags.LOGS)
+                    && !state.is(BlockTags.SAPLINGS)
+                    && !state.is(BlockTags.FLOWERS)
+                    && !state.is(BlockTags.REPLACEABLE)) {
+                // Første solide terræn-blok fundet — returnér luftblokken over den
+                return pos.above();
+            }
+            pos = pos.below();
+        }
+        // Fallback: brug vanilla heightmap hvis scanningen løber tør
+        return level.getHeightmapPos(Heightmap.Types.WORLD_SURFACE, column);
+    }
+
+    /**
+     * Returnerer om en blok anses for "naturlig" — dvs. kan forekomme i uberørt terræn.
+     *
+     * To-trins check:
+     *   1. Fast opslagscheck mod NATURAL_BLOCKS-sættet for terræn- og undergrunds-blokke.
+     *   2. Tag-baseret check for vegetation og træer — dækker automatisk alle nuværende
+     *      og fremtidige blokke med de relevante tags uden at listen skal opdateres.
+     *      BlockTags.REPLACEABLE: short_grass, tall_grass, fern, blomster, leaf_litter osv.
+     *      BlockTags.LEAVES:      alle løvblokke (oak, birch, pale_oak osv.)
+     *      BlockTags.LOGS:        alle stammblokke inkl. stripped-varianter
+     *      BlockTags.SAPLINGS:    alle frøplanter
+     *      BlockTags.FLOWERS:     alle blomster (subset af REPLACEABLE, men eksplicit for klarhed)
+     *      BlockTags.SNOW:        snelags-blokken (snow) og snow_block
+     *      BlockTags.ICE:         ice og frosted_ice
+     *
+     * @param state  block-tilstanden der tjekkes
+     * @return true hvis blokken er naturlig (ikke player-placeret)
+     */
+    private static boolean isNaturalBlock(BlockState state) {
+        if (NATURAL_BLOCKS.contains(state.getBlock())) return true;
+        return state.is(BlockTags.LEAVES)
+                || state.is(BlockTags.LOGS)
+                || state.is(BlockTags.SAPLINGS)
+                || state.is(BlockTags.FLOWERS)
+                || state.is(BlockTags.REPLACEABLE)
+                || state.is(BlockTags.SNOW)
+                || state.is(BlockTags.ICE);
+    }
+
+    // =========================================================================
+    // S07 — .nbt-placering
+    // =========================================================================
+
+    /**
+     * Indlæser syndicate_base.nbt fra JAR'ens data-ressourcer som en StructureTemplate.
+     *
+     * MC 26.1.1 bruger SNBT-format (.snbt) til resource-pack-strukturer og
+     * StructureTemplateManager.get() leder kun efter .snbt-filer. Da vores fil er
+     * binær NBT (eksporteret via /structure save), bypasser vi manageren og læser
+     * filen direkte via ResourceManager + NbtIo.readCompressed().
+     *
+     * Ressource-stien i JAR'en: data/syndicate/structures/syndicate_base2.nbt
+     * Identifier-form:           syndicate:structures/syndicate_base2.nbt
+     *
+     * @param level serverniveauet — bruges til at hente ResourceManager og StructureTemplateManager
+     * @return den indlæste StructureTemplate, eller null hvis filen ikke kan findes/parses
+     */
+    @Nullable
+    private static StructureTemplate loadTemplate(ServerLevel level) {
+        if (cachedTemplate != null) return cachedTemplate;
+
+        var resourceManager = level.getServer().getResourceManager();
+        Identifier fileId = Identifier.fromNamespaceAndPath("syndicate", "structures/syndicate_base.nbt");
+
+        var optResource = resourceManager.getResource(fileId);
+        if (optResource.isEmpty()) {
+            SyndicateMod.LOGGER.error(
+                    "Could not find {} via ResourceManager — base placement disabled.", fileId);
+            return null;
+        }
+        try (var stream = optResource.get().open()) {
+            CompoundTag nbt = NbtIo.readCompressed(stream, NbtAccounter.unlimitedHeap());
+            HolderGetter<Block> blockGetter = level.registryAccess().lookupOrThrow(Registries.BLOCK);
+            StructureTemplate template = new StructureTemplate();
+            template.load(blockGetter, nbt);
+            SyndicateMod.LOGGER.info("Loaded syndicate_base.nbt — size: {}", template.getSize());
+            cachedTemplate = template;
+            return template;
+        } catch (Exception e) {
+            SyndicateMod.LOGGER.error("Failed to load syndicate_base.nbt: {}", e.getMessage(), e);
+            return null;
+        }
+    }
+
+    /**
+     * Forsøger at placere en syndikats-base i den region-celle der indeholder triggerChunk.
+     *
+     * Metoden er designet til at blive kaldt fra CHUNK_LOAD-eventet for HVER chunk der loader.
+     * Den afviser straks (O(1)) hvis den loadede chunk ikke er den deterministiske kandidat
+     * for sin celle — dvs. 99.9 % af alle chunk-load events returnerer false med minimal cost.
+     *
+     * Når kandidat-chunken loader, køres S06-validering og strukturen stamps hvis alle
+     * checks er bestået. Resultatet (den nye base) gemmes i både SyndicateBaseManager
+     * og SyndicateSavedData så den overlever serverrestart.
+     *
+     * Kalder ikke chunk-loading — al validering sker kun på allerede-loadede chunks.
+     *
+     * @param level        serververdenen (sendt fra CHUNK_LOAD-eventet)
+     * @param triggerChunk den chunk der netop er loadet
+     * @return true hvis en base faktisk blev placeret, ellers false
+     */
+    public static boolean tryPlaceBase(ServerLevel level, ChunkPos triggerChunk) {
+        SyndicateConfig config = SyndicateConfig.getInstance();
+
+        // Beregn gitter-cellen for trigger-chunken
+        int[] cell = computeCell(triggerChunk, config.getBaseSpacingChunks());
+        int cellX = cell[0];
+        int cellZ = cell[1];
+
+        // Beregn den deterministiske kandidat-chunk for denne celle
+        ChunkPos candidate = computeCandidate(
+                cellX, cellZ, level.getSeed(),
+                config.getBaseSpacingChunks(), config.getBaseSeparationChunks()
+        );
+
+        // Afvis straks hvis den loadede chunk ikke er kandidaten — hurtigste check muligt.
+        // Kun én chunk ud af spacing×spacing chunks pr. celle er kandidaten.
+        if (!candidate.equals(triggerChunk)) return false;
+
+        SyndicateMod.LOGGER.debug("Candidate chunk {} loaded for cell ({},{})", triggerChunk, cellX, cellZ);
+
+        // Billig pre-check: spring template-indlæsning over hvis cellen allerede er afklaret
+        ResourceKey<Level> dimension = level.dimension();
+        if (SyndicateBaseManager.hasBaseInCell(cellX, cellZ, dimension, config.getBaseSpacingChunks())) {
+            SyndicateMod.LOGGER.info("Cell ({},{}) already has an active base — skipping", cellX, cellZ);
+            return false;
+        }
+        SyndicateSavedData savedData = SyndicateSavedData.getOrCreate(level);
+        if (savedData.isHardRejected(cellX, cellZ, dimension)) {
+            SyndicateMod.LOGGER.info("Cell ({},{}) is permanently blacklisted — skipping", cellX, cellZ);
+            return false;
+        }
+
+        // Indlæs strukturskabelonen manuelt fra JAR-ressourcer via ResourceManager.
+        //
+        // MC 26.1.1 har skiftet til SNBT-format (.snbt) for resource-pack-strukturer,
+        // og StructureTemplateManager.get() leder kun efter .snbt-filer. Da vores
+        // syndicate_base2.nbt er et binært NBT-fil (gemt via /structure save), bypasser
+        // vi get() og læser filen direkte med NbtIo.readCompressed().
+        //
+        // Ressource-stien: data/syndicate/structures/syndicate_base2.nbt
+        // → Identifier("syndicate", "structures/syndicate_base2.nbt")
+        StructureTemplate template = loadTemplate(level);
+        if (template == null) return false;
+
+        try {
+            return doPlaceBase(level, cellX, cellZ, candidate, template, savedData);
+        } catch (Throwable t) {
+            // Fabric's event-system sluger undtagelser i event-handlers uden at logge dem.
+            // Denne catch sikrer at alle fejl under placering er synlige i loggen.
+            SyndicateMod.LOGGER.error("Unexpected error while placing base for cell ({},{}): {}",
+                    cellX, cellZ, t.getMessage(), t);
+            return false;
+        }
+    }
+
+    /**
+     * Intern hjælper der udfører selve valideringen og stampingen.
+     * Udskilt fra tryPlaceBase() så exceptions kan fanges ét sted uden at rode koden til.
+     */
+    private static boolean doPlaceBase(ServerLevel level, int cellX, int cellZ,
+                                        ChunkPos candidate, StructureTemplate template,
+                                        SyndicateSavedData savedData) {
+        SyndicateConfig config = SyndicateConfig.getInstance();
+        ResourceKey<Level> dimension = level.dimension();
+
+        // Deterministisk rotation baseret på celle-seed — samme rotation ved hvert forsøg
+        // for en given celle. Ikke-deterministisk rotation ændrer footprint-AABB'en pr. forsøg
+        // og gør chunk-guard-resultatet inkonsistent på tværs af retries.
+        long rotSeed = level.getSeed()
+                + (long) cellX * 987654321L
+                + (long) cellZ * 123456789L;
+        Rotation rotation = Rotation.values()[(int) Math.floorMod(rotSeed, 4)];
+
+        // S06-validering: kør alle fail-fast checks og beregn placeringsursprung.
+        // savedData sendes videre så validate() ikke kalder getOrCreate() selv —
+        // det forhindrer blokering på DataStorage-låsen under autosave.
+        BlockPos placeOrigin = validate(level, cellX, cellZ, candidate, template, rotation, savedData);
+        if (placeOrigin == null) {
+            SyndicateMod.LOGGER.info("Cell ({},{}) rejected — terrain unsuitable or neighbor chunks not loaded",
+                    cellX, cellZ);
+            return false;
+        }
+        SyndicateMod.LOGGER.info("Terrain validation passed — origin={}, rotation={}", placeOrigin, rotation);
+
+        // TEMP DEBUG: timing af stamp + autodiscovery
+        long tStamp = System.nanoTime();
+
+        // ── Beregn AABB og skakt-position FØR stamping ───────────────────────
+        // Begge beregnes udelukkende fra template + rotation + placeOrigin — ingen verdensopslag —
+        // så de kan ske inden stamp uden sideeffekter.
+        BlockPos markerLocalPos = findShaftMarker(template, rotation); // ikke null — validate() tjekkede det
+        assert markerLocalPos != null;
+        BlockPos shaftSurfacePos = placeOrigin.offset(markerLocalPos);
+
+        AABB bounds = computeFootprintAABB(placeOrigin, template, rotation);
+        int minX = (int) bounds.minX;
+        int maxX = (int) bounds.maxX;
+        int minY = (int) bounds.minY;
+        int maxY = (int) bounds.maxY;
+        int minZ = (int) bounds.minZ;
+        int maxZ = (int) bounds.maxZ;
+
+        // ── Stamp strukturen (kun solide blokke) ─────────────────────────────
+        // En inline StructureProcessor springer alle luftblokke over under stamping.
+        // AtomicInteger bruges fordi anonymous inner class kun kan tilgå effectively-final variabler —
+        // vi kan ikke bruge en almindelig int-tæller der opdateres inde i processBlock.
+        AtomicInteger processorCalled = new AtomicInteger(0);
+        AtomicInteger processorSkippedAir = new AtomicInteger(0);
+        AtomicInteger processorPlaced = new AtomicInteger(0);
+
+        // passableNonAirInTemplate: ikke-luft-blokke i templaten der IKKE er solide —
+        // f.eks. stiger, trapdoors, torches, skilte. Bruges til flood-fill spredning
+        // så skakten kan gennemkrydses selv med en stige på væggen.
+        // Disse blokke carves IKKE (kun luftblokke carves), men de tillader flood-fill
+        // at nå de rum der er forbundet via skakten.
+        Set<BlockPos> passableNonAirInTemplate = new HashSet<>();
+
+        // deferredBlocks: TRIPWIRE og TRIPWIRE_HOOK placeres IKKE af placeInWorld.
+        // Årsag: placeInWorld bruger UPDATE_CLIENTS (flag 2 = ingen neighborChanged), men
+        // TripWireHookBlock.onPlace() → updateSource() er den mekanisme der kobler krog og
+        // snøre-segmenter. Placeres de under placeInWorld, kører updateSource() uden at den
+        // anden krog er på plads endnu → forbindelsen etableres aldrig → snøret forbliver
+        // i en ugyldig tilstand og fjernes af Minecraft.
+        //
+        // Løsning: to-pas placement EFTER carving (alle vægge/gulv er på plads):
+        //   pass 1 — snøre-segmenter (TRIPWIRE) med UPDATE_CLIENTS
+        //   pass 2 — kroger (TRIPWIRE_HOOK) med UPDATE_ALL → onPlace() kobler begge ender
+        //
+        // Positionerne tilføjes stadig til passableNonAirInTemplate så flood-fill kan
+        // passere igennem dem til rum på den anden side af fælden.
+        List<StructureTemplate.StructureBlockInfo> deferredBlocks = new ArrayList<>();
+
+        StructureProcessor skipAirProcessor = new StructureProcessor() {
+            @Override
+            public StructureTemplate.StructureBlockInfo processBlock(
+                    LevelReader levelReader, BlockPos offset, BlockPos pos,
+                    StructureTemplate.StructureBlockInfo original,
+                    StructureTemplate.StructureBlockInfo modified,
+                    StructurePlaceSettings placeSettings) {
+                processorCalled.incrementAndGet();
+                if (modified.state().isAir()) {
+                    processorSkippedAir.incrementAndGet();
+                    return null; // spring luftblok over
+                }
+                // Snøre-blokke udskydes — tilføj til deferredBlocks og passableNonAirInTemplate
+                // (flood-fill skal passere igennem), men returner null så placeInWorld springer over.
+                if (modified.state().is(Blocks.TRIPWIRE) || modified.state().is(Blocks.TRIPWIRE_HOOK)) {
+                    deferredBlocks.add(modified);
+                    passableNonAirInTemplate.add(modified.pos());
+                    return null;
+                }
+                // Ikke-solid, ikke-luft blok (stig11e, trapdoor, torch m.fl.) —
+                // gem verdensposition til flood-fill traversal, men stamp den normalt.
+                if (!modified.state().isSolid()) {
+                    passableNonAirInTemplate.add(modified.pos());
+                }
+                processorPlaced.incrementAndGet();
+                return modified;
+            }
+            @Override
+            protected StructureProcessorType<?> getType() {
+                return StructureProcessorType.NOP;
+            }
+        };
+
+        StructurePlaceSettings settings = new StructurePlaceSettings()
+                .setRotation(rotation)
+                .setIgnoreEntities(true)
+                .addProcessor(skipAirProcessor);
+
+        template.placeInWorld(level, placeOrigin, placeOrigin, settings, level.getRandom(),
+                Block.UPDATE_CLIENTS);
+
+        SyndicateMod.LOGGER.debug(
+                "Structure stamped: {} blocks processed ({} air skipped, {} placed, {} passable non-air)",
+                processorCalled.get(), processorSkippedAir.get(), processorPlaced.get(),
+                passableNonAirInTemplate.size());
+
+        // ── Fjern SHAFT_MARKER ───────────────────────────────────────────────
+        level.setBlock(shaftSurfacePos, Blocks.AIR.defaultBlockState(), Block.UPDATE_CLIENTS);
+
+        // ── Udhul interiøret under overfladen ────────────────────────────────
+        StructurePlaceSettings filterSettings = new StructurePlaceSettings().setRotation(rotation);
+        int surfaceCutoffY = shaftSurfacePos.getY();
+
+        SyndicateMod.LOGGER.debug(
+                "Carving setup: entrance={}, cutoffY={}, origin={}",
+                shaftSurfacePos, surfaceCutoffY, placeOrigin);
+
+        int carvedCount = 0;
+        int skippedAboveSurface = 0;
+
+        // Byg opslags-set over luftblokke i templaten (kun disse carves).
+        Set<BlockPos> allAirInTemplate = new HashSet<>();
+        for (var bi : template.filterBlocks(placeOrigin, filterSettings, Blocks.AIR))
+            allAirInTemplate.add(bi.pos());
+        for (var bi : template.filterBlocks(placeOrigin, filterSettings, Blocks.CAVE_AIR))
+            allAirInTemplate.add(bi.pos());
+
+        // Flood-fill traversal-set: luft + passable ikke-luft (stiger, trapdoors osv.).
+        // Flood-fill spreder sig gennem begge — men kun luftpositioner carves faktisk.
+        // Bounding-box-luft UDENFOR ydervæggene er ikke forbundet til skakten og nås aldrig.
+        Set<BlockPos> floodPassable = new HashSet<>(allAirInTemplate);
+        floodPassable.addAll(passableNonAirInTemplate);
+
+        SyndicateMod.LOGGER.debug("Flood-fill sets: {} air, {} passable non-air, {} total",
+                allAirInTemplate.size(), passableNonAirInTemplate.size(), floodPassable.size());
+
+        // Find flood-fill startpunkt: scan nedad fra SHAFT_MARKER til første passable blok.
+        // SHAFT_MARKER selv er solid (dead_tube_coral_block); under den kan der være en stige,
+        // en trapdoor eller direkte luft — alle tre er i floodPassable.
+        BlockPos floodStart = null;
+        for (int dy = 1; dy <= template.getSize(rotation).getY(); dy++) {
+            BlockPos floodCandidate = shaftSurfacePos.below(dy);
+            if (floodPassable.contains(floodCandidate)) {
+                floodStart = floodCandidate;
+                break;
+            }
+        }
+
+        Set<BlockPos> toCarve = new HashSet<>();
+
+        if (floodStart != null) {
+            SyndicateMod.LOGGER.debug("Flood-fill starting at {} ({} below shaft entrance)",
+                    floodStart, floodStart.getY() - shaftSurfacePos.getY());
+            Queue<BlockPos> queue = new ArrayDeque<>();
+            queue.add(floodStart);
+            toCarve.add(floodStart);
+
+            while (!queue.isEmpty()) {
+                BlockPos current = queue.poll();
+                for (Direction dir : Direction.values()) {
+                    BlockPos neighbor = current.relative(dir);
+                    if (floodPassable.contains(neighbor) && toCarve.add(neighbor)) {
+                        queue.add(neighbor);
+                    }
+                }
+            }
+        } else {
+            SyndicateMod.LOGGER.warn(
+                    "No passable block found below shaft entrance {} — interior will not be carved",
+                    shaftSurfacePos);
+        }
+
+        SyndicateMod.LOGGER.debug("Flood-fill complete: {} of {} air blocks reachable from shaft",
+                toCarve.size(), allAirInTemplate.size());
+
+        // Udhul kun positioner der er:
+        //   (a) forbundet til skakten (i toCarve — flood-fill-resultatet), OG
+        //   (b) faktisk luftblokke i templaten (i allAirInTemplate), OG
+        //   (c) under overfladen (Y < surfaceCutoffY)
+        //
+        // (b) er afgørende: flood-fill spreder sig GENNEM ikke-solide blokke (stiger, tæpper,
+        // fakler osv.) for at nå forbundne rum, men disse blokke er allerede stampet korrekt
+        // af placeInWorld og skal ikke overskrives med luft.
+        for (BlockPos worldPos : toCarve) {
+            if (!allAirInTemplate.contains(worldPos)) continue; // ikke en luftblok — bevar den
+            if (worldPos.getY() < surfaceCutoffY) {
+                level.setBlock(worldPos, Blocks.AIR.defaultBlockState(), Block.UPDATE_CLIENTS);
+                carvedCount++;
+            } else {
+                skippedAboveSurface++;
+            }
+        }
+
+        SyndicateMod.LOGGER.debug("Carving done: {} blocks removed, {} skipped above surface (cutoff Y={})",
+                carvedCount, skippedAboveSurface, surfaceCutoffY);
+
+        // ── To-pas placement af snøre-blokke ────────────────────────────────
+        // Pass 1: snøre-segmenter placeres som STANDARD-state uden retningsflag (UPDATE_CLIENTS).
+        //
+        // Vi bruger Blocks.TRIPWIRE.defaultBlockState() i stedet for block.state() fra NBT'en.
+        // Årsagen: TripWireBlock's NBT-state indeholder NORTH/SOUTH/EAST/WEST-flag sat til de
+        // retninger fælden var forbundet i i template-konteksten. Disse flag afspejler
+        // IKKE nødvendigvis den rotation der er påført strukturen under stamping — TripWireBlock
+        // anvender boolean-egenskaber (NORTH, SOUTH, EAST, WEST) frem for en enkelt FACING-retning,
+        // og blokrotering af boolean-retningsegenskaber kan afvige fra det forventede resultat.
+        //
+        // Ved at starte med en blank standard-state lader vi krogeplaceringslogikken i pass 2
+        // beregne de korrekte retningsflag fra scratch baseret på krogenes FACING-retning, som
+        // ER korrekt roteret (TripWireHookBlock har en veldefineret FACING-egenskab).
+        //
+        // TripWireHookBlock.calculateState() scanner fremad fra krogen, gennemgår TRIPWIRE-blokke
+        // (uanset ATTACHED-tilstand) og opdaterer wire-segmenterne med korrekte forbindelsesflag
+        // når den finder den modsatte krog.
+        for (var block : deferredBlocks) {
+            if (block.state().is(Blocks.TRIPWIRE)) {
+                level.setBlock(block.pos(), Blocks.TRIPWIRE.defaultBlockState(), Block.UPDATE_CLIENTS);
+            }
+        }
+        // Pass 2: kroger positioneres med UPDATE_CLIENTS — ingen neighborChanged-propagation.
+        // UPDATE_ALL ville kalde neighborChanged på de tilstødende blokke (herunder snøret og
+        // støttevæggen), hvilket kan udløse en kæde af opdateringer der ender med at krogen
+        // kalder sin egen canSurvive()-check og dropper som item.
+        // Vi udsætter calculateState()-kaldet til pass 3, når ALLE blokke er på plads.
+        for (var block : deferredBlocks) {
+            if (block.state().is(Blocks.TRIPWIRE_HOOK)) {
+                level.setBlock(block.pos(), block.state(), Block.UPDATE_CLIENTS);
+            }
+        }
+        // Pass 3: trigger calculateState() for den første krog via onPlace().
+        //
+        // Vi kalder blockState.onPlace(level, pos, AIR, false) direkte i stedet for
+        // level.setBlock(..., UPDATE_ALL), fordi:
+        //   - setBlock med UPDATE_ALL sender neighborChanged til alle naboer → mulig kaskade
+        //   - setBlock med den SAMME state som allerede er sat returnerer false (ingen effekt)
+        //   - onPlace() kalder calculateState() direkte uden at trigge setBlock → sikker
+        //
+        // onPlace() tjekker "!oldState.is(this)" — vi sender AIR som oldState for at sikre
+        // at checket er sandt og calculateState() faktisk kører.
+        //
+        // calculateState() scanner fremad fra krogs FACING-retning, finder alle wire-segmenter,
+        // finder modkrogen og kobler hele fælden: sætter NORTH/SOUTH/EAST/WEST og ATTACHED=true
+        // på alle segmenter samt ATTACHED=true på begge kroger.
+        //
+        // Én krog er tilstrækkelig — calculateState() kobler BEGGE ender og alt wire i ét kald.
+        for (var block : deferredBlocks) {
+            if (block.state().is(Blocks.TRIPWIRE_HOOK)) {
+                block.state().onPlace(level, block.pos(), Blocks.AIR.defaultBlockState(), false);
+                break;
+            }
+        }
+        SyndicateMod.LOGGER.debug("Deferred tripwire placement: {} segment(s), {} hook(s)",
+                deferredBlocks.stream().filter(b -> b.state().is(Blocks.TRIPWIRE)).count(),
+                deferredBlocks.stream().filter(b -> b.state().is(Blocks.TRIPWIRE_HOOK)).count());
+
+        // ── Autodiscovery: scan AABB for kister og spawn-markører ─────────────
+        // Kister opdages ved at tjekke BlockEntity-typen — mere præcis end blok-type-check
+        // da ChestBlock har sin BlockEntity uanset orientering (single/double/waterlogged).
+        //
+        // Spawn-markører (emerald_block) erstattes med luft umiddelbart efter discovery.
+        // Positionerne gemmes i SyndicateBase.spawnPositions til brug af S09 (guard-spawn).
+        List<BlockPos> chestPositions = new ArrayList<>();
+        List<BlockPos> spawnPositions = new ArrayList<>();
+
+        for (int x = minX; x <= maxX; x++) {
+            for (int y = minY; y <= maxY; y++) {
+                for (int z = minZ; z <= maxZ; z++) {
+                    BlockPos pos = new BlockPos(x, y, z);
+                    if (level.getBlockEntity(pos) instanceof ChestBlockEntity) {
+                        chestPositions.add(pos.immutable());
+                    } else if (level.getBlockState(pos).is(Blocks.EMERALD_BLOCK)) {
+                        spawnPositions.add(pos.immutable());
+                        // Erstat markøren med luft — positionen er gemt i spawnPositions
+                        level.setBlock(pos, Blocks.AIR.defaultBlockState(), Block.UPDATE_CLIENTS);
+                    }
+                }
+            }
+        }
+
+        // ── Tilføj starter-loot ───────────────────────────────────────────────
+        // starterValuableCount items fra ChestThiefConfig's prioritetsliste (medium 100–400),
+        // resten som common filler (kul, planker, brød osv.) — se fillStarterLoot().
+        int totalStarterItems = fillStarterLoot(level, chestPositions,
+                config.getStarterLootTotal(), config.getStarterValuableCount());
+
+        // ── Opret og registrér basen ──────────────────────────────────────────
+        // shaftSurfacePos er overfladeindgangens position (der hvor spilleren ser skakten).
+        SyndicateBase base = new SyndicateBase(
+                shaftSurfacePos, bounds, dimension,
+                chestPositions, spawnPositions, totalStarterItems
+        );
+
+        // Tilføj til in-memory manageren (bruges af S08, S09, S10 under sessionen)
+        SyndicateBaseManager.addBase(base);
+
+        // Tilføj til persistent lagring (overlever serverrestart via SyndicateSavedData)
+        savedData.addBase(base);
+
+        // Fortæl MC's struktur-system at kandidat-chunken indeholder en syndikats-base.
+        // StructureStart gemmes i chunk-NBT og genindlæses automatisk ved chunk-load,
+        // så /locate structure syndicate:syndicate_base virker på tværs af serverrestarter.
+        //
+        // Vi bruger candidate (ChunkPos) som strukturens "hjem-chunk" — det er den chunk
+        // der trigede placeringen, og den er garanteret loaded nu.
+        // PiecesContainer er tom fordi vores stykker er stampet direkte som blokke —
+        // vi behøver ikke registrere dem som StructurePiece-objekter for at /locate virker.
+        try {
+            // lookup() returnerer Optional<Registry<Structure>> — bruger lookup, ikke lookupOrThrow,
+            // så en manglende registry ikke crasher serveren.
+            var registryOpt = level.registryAccess().lookup(Registries.STRUCTURE);
+            if (registryOpt.isPresent()) {
+                ResourceKey<Structure> structureKey = ResourceKey.create(
+                        Registries.STRUCTURE,
+                        Identifier.fromNamespaceAndPath("syndicate", "syndicate_base"));
+                // getOptional(ResourceKey) returnerer Optional<Structure> — selve instansen
+                var structureOpt = registryOpt.get().getOptional(structureKey);
+                if (structureOpt.isPresent()) {
+                    // PiecesContainer skal have mindst ét styk for at StructureStart.isValid()
+                    // returnerer true — uden det returnerer StructureCheck.checkStart()
+                    // START_NOT_PRESENT og /locate finder ingenting.
+                    //
+                    // 1×1×1 bounding box præcis ved shaftSurfacePos (overfladeindgangen):
+                    // /locate beregner positionen fra bounding box'ens centrum — for en 1×1×1 boks
+                    // er centrum = min = max = indgangspositionen. Det sikrer at /locate viser
+                    // de korrekte XYZ+Y-koordinater direkte til skaktens indgang.
+                    //
+                    // StructureStart's hjem-chunk (ChunkPos) skal matche den chunk der indeholder
+                    // shaftSurfacePos — ellers søger StructureCheck i den forkerte chunk og
+                    // /locate returnerer en lidt forskudt position.
+                    // >> 4 svarer til Math.floorDiv(coord, 16) — konverterer blokkoordinat til chunk-koordinat
+                    ChunkPos entranceChunk = new ChunkPos(shaftSurfacePos.getX() >> 4, shaftSurfacePos.getZ() >> 4);
+                    BoundingBox markerBox = new BoundingBox(
+                            shaftSurfacePos.getX(), shaftSurfacePos.getY(), shaftSurfacePos.getZ(),
+                            shaftSurfacePos.getX(), shaftSurfacePos.getY(), shaftSurfacePos.getZ()
+                    );
+                    StructureStart start = new StructureStart(
+                            structureOpt.get(),
+                            entranceChunk,
+                            0,
+                            new PiecesContainer(List.of(new SyndicateBaseMarkerPiece(markerBox)))
+                    );
+                    level.getChunk(entranceChunk.x(), entranceChunk.z())
+                            .setStartForStructure(structureOpt.get(), start);
+
+                    // Opdater StructureCheck's in-memory cache med det nye StructureStart.
+                    // setStartForStructure() skriver kun til chunk-objektet; cachen opdateres normalt
+                    // af onStructureLoad() når chunk-NBT'en genindlæses fra disk ved serverrestart.
+                    // I den aktuelle session (inden restart) skal vi kalde onStructureLoad() selv,
+                    // ellers finder /locate ikke basen fordi cachen stadig siger START_NOT_PRESENT
+                    // fra da chunken blev loaded (før vi satte StructureStart'en).
+                    StructureCheck structureCheck = ((StructureManagerAccessor) level.structureManager()).getStructureCheck();
+                    structureCheck.onStructureLoad(entranceChunk, Map.of(structureOpt.get(), start));
+
+                    // Detaljeret logning til fejlsøgning af /locate-koordinater.
+                    // locate_offset=[8,0,8] i structure_set-JSON forskyder det rapporterede punkt
+                    // med (8,0,8) relativt til entranceChunk's NW-hjørne.
+                    // Forventet /locate-output = (entranceChunk.x*16 + 8, ~, entranceChunk.z*16 + 8).
+                    int expectedLocateX = (entranceChunk.x() << 4) + 8;
+                    int expectedLocateZ = (entranceChunk.z() << 4) + 8;
+                    SyndicateMod.LOGGER.info(
+                            "[/locate debug] shaftSurfacePos=({},{},{})  candidate=({},{})  entranceChunk=({},{})  " +
+                            "entranceChunk NW corner=({},{})  locate_offset=[8,0,8]  " +
+                            "expected /locate output=({},~,{})",
+                            shaftSurfacePos.getX(), shaftSurfacePos.getY(), shaftSurfacePos.getZ(),
+                            candidate.x(), candidate.z(),
+                            entranceChunk.x(), entranceChunk.z(),
+                            entranceChunk.x() << 4, entranceChunk.z() << 4,
+                            expectedLocateX, expectedLocateZ);
+
+                    // Verificer at StructureStart faktisk er gemt i chunken
+                    var registeredStart = level.getChunk(entranceChunk.x(), entranceChunk.z())
+                            .getStartForStructure(structureOpt.get());
+                    SyndicateMod.LOGGER.info(
+                            "[/locate debug] setStartForStructure done — isValid={}, homeChunk=({},{}), bbox={}",
+                            registeredStart != null && registeredStart.isValid(),
+                            registeredStart != null ? registeredStart.getChunkPos().x() : "N/A",
+                            registeredStart != null ? registeredStart.getChunkPos().z() : "N/A",
+                            registeredStart != null ? registeredStart.getBoundingBox() : "N/A");
+                } else {
+                    SyndicateMod.LOGGER.warn(
+                            "syndicate:syndicate_base not found in worldgen registry — /locate will not work. " +
+                            "Check that data/syndicate/worldgen/structure/syndicate_base.json is correct.");
+                }
+            }
+        } catch (Exception e) {
+            SyndicateMod.LOGGER.warn("Failed to register /locate entry for base: {}", e.getMessage());
+        }
+
+        // Spawn minimum-vagter med det samme — strukturen er netop stampet,
+        // så spawn-chunk-positionerne er garanteret loaded.
+        SyndicateBaseManager.spawnGuardsIfNeeded(level, base);
+
+        SyndicateMod.LOGGER.info(
+                "Syndicate base placed at {} — {} chest(s), {} spawn positions, {} starter items ({}ms)",
+                placeOrigin, chestPositions.size(), spawnPositions.size(), totalStarterItems,
+                SyndicateBasePlacer.ms(tStamp));
+
+        return true;
+    }
+
+    /**
+     * Almindelige filler-items der bruges til at fylde den ikke-værdifulde del af starter-looten.
+     *
+     * Listen skal forestille et kriminelt syndicats lager: basale forsyninger man finder
+     * overalt — ikke sjældne, men heller ikke unyttige. Til forskel fra de prioriterede
+     * ChestThief-items er disse hardcodet fordi de ikke er afhængige af spillerens kiste-indhold.
+     */
+    private static final List<Item> FILLER_ITEMS = List.of(
+            Items.BREAD, Items.COAL, Items.OAK_PLANKS, Items.STICK,
+            Items.WHEAT, Items.BONE, Items.LEATHER, Items.STRING,
+            Items.GRAVEL, Items.ARROW, Items.TORCH, Items.LADDER
+    );
+
+    /**
+     * Fylder kisterne i basen med to slags items:
+     *   1. valuableCount items fra ChestThiefConfig's prioritetsliste (medium 100–400):
+     *      jernredskaber, mad, basismaterialer — attraktivt men ikke game-breaking.
+     *   2. (totalItems − valuableCount) filler-items fra FILLER_ITEMS: kul, planker,
+     *      brød osv. — giver basen en realistisk "fyldt lager"-fornemmelse.
+     *
+     * Items placeres ét ad gangen i tilfældigt valgte kister (round-robin med random offset)
+     * for at fordele looten jævnt på tværs af alle kiste-slots.
+     *
+     * @param level          serverniveauet — bruges til random og block entity adgang
+     * @param chestPositions absolutte positioner på alle kiste-blokke i basen
+     * @param totalItems     samlet antal items der forsøges placeret
+     * @param valuableCount  heraf items fra ChestThiefConfig's prioritetsliste
+     * @return det samlede antal items der faktisk blev placeret
+     */
+    private static int fillStarterLoot(ServerLevel level, List<BlockPos> chestPositions,
+                                        int totalItems, int valuableCount) {
+        if (totalItems <= 0 || chestPositions.isEmpty()) return 0;
+
+        // Byg pool af værdifulde items fra ChestThiefConfig (medium-prioritet 100–400).
+        // ChestThiefConfig er initialiseret inden SyndicateMod — getInstance() er ikke-null her.
+        Map<String, Integer> allValues = ChestThiefConfig.getInstance().getItemValues();
+        List<Item> valuablePool = allValues.entrySet().stream()
+                .filter(e -> e.getValue() >= 100 && e.getValue() <= 400)
+                .map(e -> {
+                    Identifier id = Identifier.tryParse(e.getKey());
+                    if (id == null) return null;
+                    return BuiltInRegistries.ITEM.getOptional(id).orElse(null);
+                })
+                .filter(item -> item != null)
+                .toList();
+
+        if (valuablePool.isEmpty()) {
+            SyndicateMod.LOGGER.warn("No medium-priority items found in chest_thief_values.json — using filler items only");
+            valuableCount = 0;
+        }
+
+        // Byg den samlede sekvens: valuableCount værdifulde + resten filler, i blandet rækkefølge.
+        // Vi bruger Collections.shuffle via en lokal liste så rækkefølgen varierer pr. base.
+        RandomSource rng = level.getRandom();
+        List<Item> sequence = new java.util.ArrayList<>(totalItems);
+        for (int i = 0; i < valuableCount; i++) {
+            sequence.add(valuablePool.get(rng.nextInt(valuablePool.size())));
+        }
+        int fillerCount = totalItems - valuableCount;
+        for (int i = 0; i < fillerCount; i++) {
+            sequence.add(FILLER_ITEMS.get(rng.nextInt(FILLER_ITEMS.size())));
+        }
+        // Bland sekvensen så værdifulde og filler-items ikke sidder i blokke
+        java.util.Collections.shuffle(sequence, new java.util.Random(rng.nextLong()));
+
+        int totalPlaced = 0;
+        for (Item item : sequence) {
+            // Gennemgå kister startende fra en tilfældig position for at fordele items jævnt.
+            // Uden random offset ville alle items lande i den første kiste med plads.
+            int start = rng.nextInt(chestPositions.size());
+            boolean placed = false;
+            for (int j = 0; j < chestPositions.size() && !placed; j++) {
+                BlockPos chestPos = chestPositions.get((start + j) % chestPositions.size());
+                if (!(level.getBlockEntity(chestPos) instanceof ChestBlockEntity chest)) continue;
+
+                for (int slot = 0; slot < chest.getContainerSize(); slot++) {
+                    if (chest.getItem(slot).isEmpty()) {
+                        chest.setItem(slot, new ItemStack(item));
+                        totalPlaced++;
+                        placed = true;
+                        break;
+                    }
+                }
+            }
+            // Alle kiste-slots er fyldte — stop tidligt
+            if (!placed) break;
+        }
+
+        return totalPlaced;
+    }
+}

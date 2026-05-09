@@ -8,22 +8,25 @@
     "Pedersen"
   ],
   "contact": {
-    "issues": "https://github.com/pedersen/chest-thief-mod/issues",
-    "sources": "https://github.com/pedersen/chest-thief-mod"
+    "issues": "https://github.com/BennyGP999/minecraft-chest-thief/issues",
+    "sources": "https://github.com/BennyGP999/minecraft-chest-thief"
   },
   "license": "MIT",
   "icon": "assets/chest_thief/icon.png",
   "environment": "*",
   "entrypoints": {
     "main": [
-      "email.pedersen.ChestThiefMod"
+      "email.pedersen.chestthief.ChestThiefMod",
+      "email.pedersen.syndicate.SyndicateMod"
     ],
     "client": [
-      "email.pedersen.client.ChestThiefModClient"
+      "email.pedersen.chestthief.client.ChestThiefModClient",
+      "email.pedersen.syndicate.client.SyndicateModClient"
     ]
   },
   "mixins": [
-    "chest_thief.mixins.json"
+    "chest_thief.mixins.json",
+    "syndicate.mixins.json"
   ],
   "depends": {
     "fabricloader": ">=0.16.0",

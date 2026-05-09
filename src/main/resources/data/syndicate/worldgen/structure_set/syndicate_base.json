@@ -1,0 +1,15 @@
+{
+  "structures": [
+    {
+      "structure": "syndicate:syndicate_base",
+      "weight": 1
+    }
+  ],
+  "placement": {
+    "type": "minecraft:random_spread",
+    "spacing": 8,
+    "separation": 1,
+    "salt": 0,
+    "locate_offset": [8, 0, 8]
+  }
+}

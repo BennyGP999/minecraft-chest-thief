@@ -1,6 +1,6 @@
 {
   "parent": "minecraft:item/generated",
   "textures": {
-    "layer0": "chest_thief:item/chest_thief_spawn_egg"
+    "layer0": "minecraft:item/chest"
   }
 }
