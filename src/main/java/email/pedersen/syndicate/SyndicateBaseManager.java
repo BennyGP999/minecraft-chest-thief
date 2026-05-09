@@ -313,6 +313,23 @@ public class SyndicateBaseManager {
     }
 
     /**
+     * Fjerner en base fra den in-memory manager.
+     * Bruges når basen er ødelagt og skal afregistreres, så /locate ikke peger derhen.
+     *
+     * bases.remove() bruger objekt-identitet — korrekt fordi kalderen sender præcis
+     * den instans der blev fundet under iteration af den samme liste.
+     *
+     * @param base basen der fjernes
+     */
+    public static void removeBase(SyndicateBase base) {
+        List<SyndicateBase> bases = BASES_BY_DIMENSION.get(base.getDimension());
+        if (bases == null) return;
+        synchronized (bases) {
+            bases.remove(base);
+        }
+    }
+
+    /**
      * Markerer en base som raidet og forbereder den til at blive erstattet.
      * Implementeres fuldt ud i TASK-S10.
      *

@@ -34,6 +34,7 @@ import net.minecraft.sounds.SoundEvent;
 import net.minecraft.world.level.block.SoundType;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockBehaviour;
+import net.minecraft.world.level.block.entity.ChestBlockEntity;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.minecraft.ChatFormatting;
 import net.minecraft.commands.Commands;
@@ -46,6 +47,7 @@ import net.minecraft.world.level.levelgen.structure.pieces.StructurePieceType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -465,6 +467,15 @@ public class SyndicateMod implements ModInitializer {
             LOGGER.debug("Processed {} base candidate(s) in {}ms ({} remaining in queue)",
                     sizeBefore, elapsed, PENDING_VALIDATIONS.size());
 
+            // Periodisk ødelæggelsescheck — kører hvert 200. tick (10 sek).
+            // Fjerner baser hvis alle kister er destruerede (f.eks. af TNT-fælder).
+            // Kun loadede baser tjekkes — hasChunk() og getBlockEntity() er begge O(1).
+            if (currentTick % 200 == 0) {
+                for (ServerLevel serverLevel : server.getAllLevels()) {
+                    checkDestroyedBases(serverLevel);
+                }
+            }
+
             // Periodisk vagt-respawn — kører én gang pr. guardRespawnIntervalTicks.
             // Springer over baser hvor en spiller er i nærheden (givet spilleren ro til at udforske).
             if (currentTick % config.getGuardRespawnIntervalTicks() == 0) {
@@ -560,5 +571,67 @@ public class SyndicateMod implements ModInitializer {
      */
     private static String cellKey(ResourceKey<Level> dimension, int cellX, int cellZ) {
         return dimension.identifier() + ":" + cellX + "," + cellZ;
+    }
+
+    /**
+     * Fjerner baser i den givne dimension hvis alle deres kister er ødelagte.
+     *
+     * Køres hvert 200. tick fra END_SERVER_TICK. Algoritmen er designet til at være
+     * så billig som muligt:
+     *
+     *   1. Spring over baser med uloadede chunk-positioner — vi kan ikke afgøre om
+     *      kisterne er der eller ej uden at loade chunken. hasChunk() er O(1).
+     *
+     *   2. Tidlig exit så snart én ChestBlockEntity stadig eksisterer — basen er intakt.
+     *      getBlockEntity() er O(1) (HashMap-opslag i LevelChunk).
+     *
+     *   3. Kun baser med nul-kister tilføjes til toRemove-listen.
+     *
+     * Fjernelse sker EFTER iterationen for at undgå ConcurrentModificationException
+     * på den synchronized liste.
+     *
+     * @param level dimensionen der tjekkes
+     */
+    private static void checkDestroyedBases(ServerLevel level) {
+        List<SyndicateBase> bases = SyndicateBaseManager.getBases(level.dimension());
+        if (bases == null || bases.isEmpty()) return;
+
+        List<SyndicateBase> toRemove = new ArrayList<>();
+        synchronized (bases) {
+            for (SyndicateBase base : bases) {
+                if (base.getChestPositions().isEmpty()) continue;
+
+                // Tjek at alle kiste-chunks er loadede — ellers er vi ikke i stand
+                // til at konstatere om kisterne er destruerede eller blot uloadede.
+                boolean allChunksLoaded = true;
+                for (BlockPos cp : base.getChestPositions()) {
+                    if (!level.hasChunk(cp.getX() >> 4, cp.getZ() >> 4)) {
+                        allChunksLoaded = false;
+                        break;
+                    }
+                }
+                if (!allChunksLoaded) continue;
+
+                // Er mindst én kiste stadig intakt? Tidlig exit ved første fund.
+                boolean hasChest = false;
+                for (BlockPos cp : base.getChestPositions()) {
+                    if (level.getBlockEntity(cp) instanceof ChestBlockEntity) {
+                        hasChest = true;
+                        break;
+                    }
+                }
+                if (!hasChest) toRemove.add(base);
+            }
+        }
+
+        if (toRemove.isEmpty()) return;
+
+        SyndicateSavedData savedData = SyndicateSavedData.getOrCreate(level);
+        for (SyndicateBase base : toRemove) {
+            SyndicateBaseManager.removeBase(base);
+            savedData.removeBase(base);
+            LOGGER.info("Base ved {} er ødelagt (alle kister væk) — fjernet fra registret",
+                    base.getPosition());
+        }
     }
 }

@@ -249,6 +249,21 @@ public class SyndicateSavedData extends SavedData {
     }
 
     /**
+     * Fjerner en base fra persistenslaget.
+     * Bruges når basen er ødelagt (alle kister destrueret af f.eks. TNT).
+     * setDirty() sikrer at Minecraft skriver filen til disk ved næste flush.
+     *
+     * bases.remove() bruger objekt-identitet — det er korrekt, fordi SyndicateBaseManager
+     * og SyndicateSavedData deler de samme instanser siden serverstart/addBase().
+     *
+     * @param base basen der fjernes
+     */
+    public void removeBase(SyndicateBase base) {
+        bases.remove(base);
+        setDirty();
+    }
+
+    /**
      * Returnerer en umodificerbar visning af alle gemte baser.
      * Bruges ved serveropstart til at genopfylde SyndicateBaseManager.
      *
