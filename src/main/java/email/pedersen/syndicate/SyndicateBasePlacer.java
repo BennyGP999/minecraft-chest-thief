@@ -746,12 +746,12 @@ public class SyndicateBasePlacer {
         // Billig pre-check: spring template-indlæsning over hvis cellen allerede er afklaret
         ResourceKey<Level> dimension = level.dimension();
         if (SyndicateBaseManager.hasBaseInCell(cellX, cellZ, dimension, config.getBaseSpacingChunks())) {
-            SyndicateMod.LOGGER.info("Cell ({},{}) already has an active base — skipping", cellX, cellZ);
+            SyndicateMod.LOGGER.debug("Cell ({},{}) already has an active base — skipping", cellX, cellZ);
             return false;
         }
         SyndicateSavedData savedData = SyndicateSavedData.getOrCreate(level);
         if (savedData.isHardRejected(cellX, cellZ, dimension)) {
-            SyndicateMod.LOGGER.info("Cell ({},{}) is permanently blacklisted — skipping", cellX, cellZ);
+            SyndicateMod.LOGGER.debug("Cell ({},{}) is permanently blacklisted — skipping", cellX, cellZ);
             return false;
         }
 
@@ -801,7 +801,7 @@ public class SyndicateBasePlacer {
         // det forhindrer blokering på DataStorage-låsen under autosave.
         BlockPos placeOrigin = validate(level, cellX, cellZ, candidate, template, rotation, savedData);
         if (placeOrigin == null) {
-            SyndicateMod.LOGGER.info("Cell ({},{}) rejected — terrain unsuitable or neighbor chunks not loaded",
+            SyndicateMod.LOGGER.debug("Cell ({},{}) rejected — terrain unsuitable or neighbor chunks not loaded",
                     cellX, cellZ);
             return false;
         }
@@ -840,21 +840,6 @@ public class SyndicateBasePlacer {
         // at nå de rum der er forbundet via skakten.
         Set<BlockPos> passableNonAirInTemplate = new HashSet<>();
 
-        // deferredBlocks: TRIPWIRE og TRIPWIRE_HOOK placeres IKKE af placeInWorld.
-        // Årsag: placeInWorld bruger UPDATE_CLIENTS (flag 2 = ingen neighborChanged), men
-        // TripWireHookBlock.onPlace() → updateSource() er den mekanisme der kobler krog og
-        // snøre-segmenter. Placeres de under placeInWorld, kører updateSource() uden at den
-        // anden krog er på plads endnu → forbindelsen etableres aldrig → snøret forbliver
-        // i en ugyldig tilstand og fjernes af Minecraft.
-        //
-        // Løsning: to-pas placement EFTER carving (alle vægge/gulv er på plads):
-        //   pass 1 — snøre-segmenter (TRIPWIRE) med UPDATE_CLIENTS
-        //   pass 2 — kroger (TRIPWIRE_HOOK) med UPDATE_ALL → onPlace() kobler begge ender
-        //
-        // Positionerne tilføjes stadig til passableNonAirInTemplate så flood-fill kan
-        // passere igennem dem til rum på den anden side af fælden.
-        List<StructureTemplate.StructureBlockInfo> deferredBlocks = new ArrayList<>();
-
         StructureProcessor skipAirProcessor = new StructureProcessor() {
             @Override
             public StructureTemplate.StructureBlockInfo processBlock(
@@ -867,15 +852,10 @@ public class SyndicateBasePlacer {
                     processorSkippedAir.incrementAndGet();
                     return null; // spring luftblok over
                 }
-                // Snøre-blokke udskydes — tilføj til deferredBlocks og passableNonAirInTemplate
-                // (flood-fill skal passere igennem), men returner null så placeInWorld springer over.
-                if (modified.state().is(Blocks.TRIPWIRE) || modified.state().is(Blocks.TRIPWIRE_HOOK)) {
-                    deferredBlocks.add(modified);
-                    passableNonAirInTemplate.add(modified.pos());
-                    return null;
-                }
-                // Ikke-solid, ikke-luft blok (stig11e, trapdoor, torch m.fl.) —
-                // gem verdensposition til flood-fill traversal, men stamp den normalt.
+                // Ikke-solid blok (stiger, trapdoors, fakler, TRIPWIRE, TRIPWIRE_HOOK m.fl.) —
+                // gem verdensposition til flood-fill traversal og stamp normalt.
+                // Snøre-kroger kobles automatisk: den sidst-stampede krog kalder onPlace()
+                // → calculateState() finder modkrogen og sætter ATTACHED=true på hele fælden.
                 if (!modified.state().isSolid()) {
                     passableNonAirInTemplate.add(modified.pos());
                 }
@@ -990,64 +970,6 @@ public class SyndicateBasePlacer {
 
         SyndicateMod.LOGGER.debug("Carving done: {} blocks removed, {} skipped above surface (cutoff Y={})",
                 carvedCount, skippedAboveSurface, surfaceCutoffY);
-
-        // ── To-pas placement af snøre-blokke ────────────────────────────────
-        // Pass 1: snøre-segmenter placeres som STANDARD-state uden retningsflag (UPDATE_CLIENTS).
-        //
-        // Vi bruger Blocks.TRIPWIRE.defaultBlockState() i stedet for block.state() fra NBT'en.
-        // Årsagen: TripWireBlock's NBT-state indeholder NORTH/SOUTH/EAST/WEST-flag sat til de
-        // retninger fælden var forbundet i i template-konteksten. Disse flag afspejler
-        // IKKE nødvendigvis den rotation der er påført strukturen under stamping — TripWireBlock
-        // anvender boolean-egenskaber (NORTH, SOUTH, EAST, WEST) frem for en enkelt FACING-retning,
-        // og blokrotering af boolean-retningsegenskaber kan afvige fra det forventede resultat.
-        //
-        // Ved at starte med en blank standard-state lader vi krogeplaceringslogikken i pass 2
-        // beregne de korrekte retningsflag fra scratch baseret på krogenes FACING-retning, som
-        // ER korrekt roteret (TripWireHookBlock har en veldefineret FACING-egenskab).
-        //
-        // TripWireHookBlock.calculateState() scanner fremad fra krogen, gennemgår TRIPWIRE-blokke
-        // (uanset ATTACHED-tilstand) og opdaterer wire-segmenterne med korrekte forbindelsesflag
-        // når den finder den modsatte krog.
-        for (var block : deferredBlocks) {
-            if (block.state().is(Blocks.TRIPWIRE)) {
-                level.setBlock(block.pos(), Blocks.TRIPWIRE.defaultBlockState(), Block.UPDATE_CLIENTS);
-            }
-        }
-        // Pass 2: kroger positioneres med UPDATE_CLIENTS — ingen neighborChanged-propagation.
-        // UPDATE_ALL ville kalde neighborChanged på de tilstødende blokke (herunder snøret og
-        // støttevæggen), hvilket kan udløse en kæde af opdateringer der ender med at krogen
-        // kalder sin egen canSurvive()-check og dropper som item.
-        // Vi udsætter calculateState()-kaldet til pass 3, når ALLE blokke er på plads.
-        for (var block : deferredBlocks) {
-            if (block.state().is(Blocks.TRIPWIRE_HOOK)) {
-                level.setBlock(block.pos(), block.state(), Block.UPDATE_CLIENTS);
-            }
-        }
-        // Pass 3: trigger calculateState() for den første krog via onPlace().
-        //
-        // Vi kalder blockState.onPlace(level, pos, AIR, false) direkte i stedet for
-        // level.setBlock(..., UPDATE_ALL), fordi:
-        //   - setBlock med UPDATE_ALL sender neighborChanged til alle naboer → mulig kaskade
-        //   - setBlock med den SAMME state som allerede er sat returnerer false (ingen effekt)
-        //   - onPlace() kalder calculateState() direkte uden at trigge setBlock → sikker
-        //
-        // onPlace() tjekker "!oldState.is(this)" — vi sender AIR som oldState for at sikre
-        // at checket er sandt og calculateState() faktisk kører.
-        //
-        // calculateState() scanner fremad fra krogs FACING-retning, finder alle wire-segmenter,
-        // finder modkrogen og kobler hele fælden: sætter NORTH/SOUTH/EAST/WEST og ATTACHED=true
-        // på alle segmenter samt ATTACHED=true på begge kroger.
-        //
-        // Én krog er tilstrækkelig — calculateState() kobler BEGGE ender og alt wire i ét kald.
-        for (var block : deferredBlocks) {
-            if (block.state().is(Blocks.TRIPWIRE_HOOK)) {
-                block.state().onPlace(level, block.pos(), Blocks.AIR.defaultBlockState(), false);
-                break;
-            }
-        }
-        SyndicateMod.LOGGER.debug("Deferred tripwire placement: {} segment(s), {} hook(s)",
-                deferredBlocks.stream().filter(b -> b.state().is(Blocks.TRIPWIRE)).count(),
-                deferredBlocks.stream().filter(b -> b.state().is(Blocks.TRIPWIRE_HOOK)).count());
 
         // ── Autodiscovery: scan AABB for kister og spawn-markører ─────────────
         // Kister opdages ved at tjekke BlockEntity-typen — mere præcis end blok-type-check

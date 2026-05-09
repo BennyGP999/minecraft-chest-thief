@@ -297,6 +297,12 @@ public class SyndicateMod implements ModInitializer {
     private static final Map<String, Long> LAST_ATTEMPT_TICK = new ConcurrentHashMap<>();
 
     /**
+     * Antal syndikats-baser placeret siden serveropstart (nulstilles ved SERVER_STOPPED).
+     * Bruges udelukkende til statistik-loglinjen der kører hvert 5. minut.
+     */
+    private static int basesPlacedThisSession = 0;
+
+    /**
      * Dataklasse der holder den information vi skal bruge for at (gen)forsøge en validering.
      *
      * @param world      serverniveauet — bruges til alle blok- og struktur-opslag
@@ -418,6 +424,7 @@ public class SyndicateMod implements ModInitializer {
             SyndicateChestTracker.clearAll();
             PENDING_VALIDATIONS.clear();
             LAST_ATTEMPT_TICK.clear();
+            basesPlacedThisSession = 0;
         });
 
         ServerLifecycleEvents.SERVER_STARTED.register(server -> {
@@ -427,13 +434,6 @@ public class SyndicateMod implements ModInitializer {
                 SyndicateBaseManager.addBase(base);
             }
             LOGGER.info("Loaded {} syndicate base(s) from disk", savedData.getBases().size());
-
-            // Ny verden: ingen baser gemt → force-placer én ved spawn med det samme.
-            // Sikrer at /locate og syndikatskort virker fra første sekund, selv i creative mode.
-            // Engangsoperation — kører aldrig igen når savedData indeholder mindst én base.
-            if (savedData.getBases().isEmpty()) {
-                prePlaceFirstBase(overworld, savedData);
-            }
         });
 
         // CHUNK_LOAD: registrér kandidat-chunks til validering næste tick.
@@ -457,6 +457,19 @@ public class SyndicateMod implements ModInitializer {
         ServerTickEvents.END_SERVER_TICK.register(server -> {
             long currentTick = server.getTickCount();
             SyndicateConfig config = SyndicateConfig.getInstance();
+
+            // Forsøg første base-placering i de første 100 ticks (5 sek) uden force-loading.
+            // Minecraft loader spawn-chunks automatisk — de er typisk klar inden tick 5-10.
+            // Hvis det ikke lykkes inden 100 ticks, overtager CHUNK_LOAD-pathen naturligt
+            // når spilleren flyver mod de gule koordinater fra /locate.
+            if (currentTick <= 100 && currentTick % 20 == 0) {
+                ServerLevel overworld = server.overworld();
+                List<SyndicateBase> existingBases = SyndicateBaseManager.getBases(overworld.dimension());
+                if (existingBases == null || existingBases.isEmpty()) {
+                    tryFirstBasePlacement(overworld);
+                }
+            }
+
             if (PENDING_VALIDATIONS.isEmpty()) return;
 
             long tTick = System.nanoTime();
@@ -475,6 +488,7 @@ public class SyndicateMod implements ModInitializer {
 
                 boolean placed = SyndicateBasePlacer.tryPlaceBase(pc.world(), pc.candidate());
                 if (placed) {
+                    basesPlacedThisSession++;
                     LAST_ATTEMPT_TICK.remove(key);
                     return true; // fjern: base placeret ✓
                 }
@@ -497,6 +511,17 @@ public class SyndicateMod implements ModInitializer {
             long elapsed = (System.nanoTime() - tTick) / 1_000_000;
             LOGGER.debug("Processed {} base candidate(s) in {}ms ({} remaining in queue)",
                     sizeBefore, elapsed, PENDING_VALIDATIONS.size());
+
+            // Periodisk statistik-log — kører hvert 5. minut (6000 ticks).
+            // Viser samlet antal aktive baser i overworld og antal placeret denne session,
+            // så man kan følge med i hvor hurtigt baser dukker op efterhånden som verden udforskes.
+            if (currentTick % 6000 == 0 && currentTick > 0) {
+                ServerLevel overworld = server.overworld();
+                List<SyndicateBase> activeBases = SyndicateBaseManager.getBases(overworld.dimension());
+                int activeCount = activeBases == null ? 0 : activeBases.size();
+                LOGGER.info("[Syndicate] Aktive baser: {} | placeret denne session: {}",
+                        activeCount, basesPlacedThisSession);
+            }
 
             // Periodisk ødelæggelsescheck — kører hvert 200. tick (10 sek).
             // Fjerner baser hvis alle kister er destruerede (f.eks. af TNT-fælder).
@@ -605,24 +630,44 @@ public class SyndicateMod implements ModInitializer {
     }
 
     /**
-     * Fjerner baser i den givne dimension hvis alle deres kister er ødelagte.
+     * Forsøger at placere den første base nær spawn uden force-loading.
      *
-     * Køres hvert 200. tick fra END_SERVER_TICK. Algoritmen er designet til at være
-     * så billig som muligt:
+     * Kaldes fra END_SERVER_TICK de første 100 ticks (5 sek) når ingen baser er placerede.
+     * Minecraft loader spawn-chunks automatisk — de er typisk klar inden tick 5-10, og
+     * tryPlaceBase() returnerer false hurtigt (via hasChunk()-guard) hvis chunken endnu
+     * ikke er loaded. Ingen synkron blokering af main-tråden.
      *
-     *   1. Spring over baser med uloadede chunk-positioner — vi kan ikke afgøre om
-     *      kisterne er der eller ej uden at loade chunken. hasChunk() er O(1).
+     * Spiral-søgning fra celle (0,0) udad — nærmest spawn forsøges altid først.
      *
-     *   2. Tidlig exit så snart én ChestBlockEntity stadig eksisterer — basen er intakt.
-     *      getBlockEntity() er O(1) (HashMap-opslag i LevelChunk).
-     *
-     *   3. Kun baser med nul-kister tilføjes til toRemove-listen.
-     *
-     * Fjernelse sker EFTER iterationen for at undgå ConcurrentModificationException
-     * på den synchronized liste.
-     *
-     * @param level dimensionen der tjekkes
+     * @param level overworld — baser spawner kun her
      */
+    private static void tryFirstBasePlacement(ServerLevel level) {
+        SyndicateConfig config = SyndicateConfig.getInstance();
+        long seed = level.getSeed();
+        int spacing = config.getBaseSpacingChunks();
+        int separation = config.getBaseSeparationChunks();
+        SyndicateSavedData savedData = SyndicateSavedData.getOrCreate(level);
+        ResourceKey<Level> dimension = level.dimension();
+
+        for (int radius = 0; radius <= 3; radius++) {
+            for (int dx = -radius; dx <= radius; dx++) {
+                for (int dz = -radius; dz <= radius; dz++) {
+                    if (Math.abs(dx) != radius && Math.abs(dz) != radius) continue;
+                    if (savedData.isHardRejected(dx, dz, dimension)) continue;
+                    ChunkPos candidate = SyndicateBasePlacer.computeCandidate(dx, dz, seed, spacing, separation);
+                    // Ingen force-loading — tryPlaceBase returnerer false med det samme
+                    // hvis de nødvendige chunks ikke er loaded endnu.
+                    if (SyndicateBasePlacer.tryPlaceBase(level, candidate)) {
+                        basesPlacedThisSession++;
+                        LOGGER.info("Første syndikats-base placeret ved celle ({},{}) efter {} ticks — /locate klar",
+                                dx, dz, level.getServer().getTickCount());
+                        return;
+                    }
+                }
+            }
+        }
+    }
+
     /**
      * Finder nærmeste kandidat-chunk der endnu ikke har en placeret eller hard-rejected base.
      *
@@ -637,72 +682,6 @@ public class SyndicateMod implements ModInitializer {
      * @param origin  spillerens position — udgangspunkt for spiral-søgningen
      * @return den nærmeste ubesøgte kandidat-chunk, eller null hvis alle celler er afvist
      */
-    /**
-     * Force-placer den nærmeste syndikats-base ved spawn på en ny verden.
-     *
-     * Kaldes kun ved SERVER_STARTED når savedData er tom (første opstart af en ny verden).
-     * Formål: creative-mode-spillere og nye spillere kan bruge /locate med det samme —
-     * de behøver ikke flyve rundt og vente på at kandidat-chunken loader naturligt.
-     *
-     * Strategi:
-     *   1. Spiral-søg fra celle (0,0) udad — dvs. nærmest spawn først.
-     *   2. For hvert forsøg: force-load et 7×7-chunks-område (radius 3) rundt om kandidaten.
-     *      Dette sikrer at validate()'s chunk-guard bestås uanset strukturens fodaftryk.
-     *   3. Kald tryPlaceBase() — placerer basen eller hard-rejecter cellen ved uegnet terræn.
-     *   4. Stop ved første vellykkede placering.
-     *
-     * Performance: engangsoperation. 49 chunks × first-time-generation koster typisk 2-5 sek.
-     * Spawn-chunks er ofte allerede pre-genereret af Minecraft, så det reelle overhead er lavere.
-     *
-     * @param level     overworld — baser spawner kun her
-     * @param savedData persistens-laget — tjekkes for hard-rejections, opdateres ved placering
-     */
-    private static void prePlaceFirstBase(ServerLevel level, SyndicateSavedData savedData) {
-        SyndicateConfig config = SyndicateConfig.getInstance();
-        long seed = level.getSeed();
-        int spacing = config.getBaseSpacingChunks();
-        int separation = config.getBaseSeparationChunks();
-        ResourceKey<Level> dimension = level.dimension();
-
-        LOGGER.info("Ny verden detekteret — force-placer første syndikats-base ved spawn...");
-
-        // Spiral-søgning: radius 0 = celle (0,0) ved spawn, radius 1 = 8 naboer, osv.
-        for (int radius = 0; radius <= 3; radius++) {
-            for (int dx = -radius; dx <= radius; dx++) {
-                for (int dz = -radius; dz <= radius; dz++) {
-                    // Spring det indre af kvadratet over — det er dækket af lavere radii
-                    if (Math.abs(dx) != radius && Math.abs(dz) != radius) continue;
-
-                    int cellX = dx;
-                    int cellZ = dz;
-                    if (savedData.isHardRejected(cellX, cellZ, dimension)) continue;
-
-                    ChunkPos candidate = SyndicateBasePlacer.computeCandidate(
-                            cellX, cellZ, seed, spacing, separation);
-
-                    // Force-load et 7×7-chunks-område (3 chunks radius) rundt om kandidaten.
-                    // validate() kræver alle chunks i strukturens fodaftryk + 1 margins-chunk.
-                    // 3 chunks radius dækker selv de største tænkelige strukturstørrelser.
-                    // level.getChunk() blokerer til chunken er fuldt genereret — synkront kald.
-                    int LOAD_RADIUS = 3;
-                    for (int cx = candidate.x() - LOAD_RADIUS; cx <= candidate.x() + LOAD_RADIUS; cx++) {
-                        for (int cz = candidate.z() - LOAD_RADIUS; cz <= candidate.z() + LOAD_RADIUS; cz++) {
-                            level.getChunk(cx, cz);
-                        }
-                    }
-
-                    boolean placed = SyndicateBasePlacer.tryPlaceBase(level, candidate);
-                    if (placed) {
-                        LOGGER.info("Første syndikats-base placeret ved celle ({},{}) — /locate klar", cellX, cellZ);
-                        return;
-                    }
-                }
-            }
-        }
-        LOGGER.warn("Kunne ikke force-placere første syndikats-base — alle celler ved spawn afvist. " +
-                "Basen vil placeres naturligt når spilleren udforsker.");
-    }
-
     @org.jetbrains.annotations.Nullable
     private static ChunkPos findNearestTheoreticalCandidate(ServerLevel level, BlockPos origin) {
         SyndicateConfig config = SyndicateConfig.getInstance();
@@ -751,6 +730,25 @@ public class SyndicateMod implements ModInitializer {
         return null;
     }
 
+    /**
+     * Fjerner baser i den givne dimension hvis alle deres kister er ødelagte.
+     *
+     * Køres hvert 200. tick fra END_SERVER_TICK. Algoritmen er designet til at være
+     * så billig som muligt:
+     *
+     *   1. Spring over baser med uloadede chunk-positioner — vi kan ikke afgøre om
+     *      kisterne er der eller ej uden at loade chunken. hasChunk() er O(1).
+     *
+     *   2. Tidlig exit så snart én ChestBlockEntity stadig eksisterer — basen er intakt.
+     *      getBlockEntity() er O(1) (HashMap-opslag i LevelChunk).
+     *
+     *   3. Kun baser med nul-kister tilføjes til toRemove-listen.
+     *
+     * Fjernelse sker EFTER iterationen for at undgå ConcurrentModificationException
+     * på den synchronized liste.
+     *
+     * @param level dimensionen der tjekkes
+     */
     private static void checkDestroyedBases(ServerLevel level) {
         List<SyndicateBase> bases = SyndicateBaseManager.getBases(level.dimension());
         if (bases == null || bases.isEmpty()) return;
