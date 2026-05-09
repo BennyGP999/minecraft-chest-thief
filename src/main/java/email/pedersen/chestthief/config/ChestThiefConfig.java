@@ -112,13 +112,13 @@ public class ChestThiefConfig {
      * Under panik sprinter mob'en væk fra angriberen og taber ét tilfældigt item
      * fra sin beholdning. De resterende items kan fås ved at slå den ihjel.
      */
-    private double panicChance = 0.6;
+    private double panicChance = 0.4;
 
     /**
      * Antal ticks mob'en sprinter væk i panik-tilstand. 20 ticks = 1 sekund.
      * Standard: 80 ticks = 4 sekunder.
      */
-    private int panicDurationTicks = 80;
+    private int panicDurationTicks = 200;
 
     /**
      * Antal ticks mob'en går væk fra den sidst besøgte kiste når beholdningen er fuld.

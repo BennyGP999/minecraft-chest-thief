@@ -31,7 +31,7 @@ public class SyndicateConfig {
      * Standard: 64 chunks = 1024 blokke mellem base-centrer.
      * Minimum: 16 (sikrer at der er plads til separation-margin).
      */
-    private int baseSpacingChunks = 64;
+    private int baseSpacingChunks = 32;
 
     /**
      * Minimum afstand i chunks fra cellegrænsen til base-centrum.
@@ -39,7 +39,7 @@ public class SyndicateConfig {
      * Skal være under halvdelen af baseSpacingChunks for at der er plads til en kandidat.
      * Standard: 24 chunks = 384 blokke fra cellekant.
      */
-    private int baseSeparationChunks = 24;
+    private int baseSeparationChunks = 12;
 
     // --- Vagter ---
 
@@ -64,7 +64,7 @@ public class SyndicateConfig {
      * Sikrer at en nyoprettet tom base stadig er farlig at gå ind i.
      * Standard: 2.
      */
-    private int minGuards = 2;
+    private int minGuards = 4;
 
     /**
      * Maksimalt antal vagter i basen, selv om loot-mængden tilsiger flere.
@@ -114,7 +114,7 @@ public class SyndicateConfig {
      * Hvis ingen kiste er tæt nok, tabes looten ("solgt lokalt").
      * Standard: 200 blokke — stor nok til at dække de fleste spiller-baser.
      */
-    private double lootDeliveryRadius = 200.0;
+    private double lootDeliveryRadius = 1000000.0;
 
     // --- Vagt-respawn ---
 
