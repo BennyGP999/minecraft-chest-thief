@@ -62,12 +62,57 @@ public class ChestThiefConfig {
 
     /** Which biomes the Chest Thief spawns in (resource location strings). */
     private List<String> spawnBiomes = List.of(
+            // ── Sletter og enge ───────────────────────────────────────────────
             "minecraft:plains",
+            "minecraft:sunflower_plains",
+            "minecraft:meadow",
+            // ── Skove ─────────────────────────────────────────────────────────
             "minecraft:forest",
+            "minecraft:flower_forest",
             "minecraft:birch_forest",
+            "minecraft:old_growth_birch_forest",
             "minecraft:dark_forest",
+            "minecraft:pale_garden",
+            // ── Jungle ────────────────────────────────────────────────────────
+            "minecraft:jungle",
+            "minecraft:sparse_jungle",
+            "minecraft:bamboo_jungle",
+            // ── Taiga ─────────────────────────────────────────────────────────
             "minecraft:taiga",
-            "minecraft:savanna"
+            "minecraft:old_growth_pine_taiga",
+            "minecraft:old_growth_spruce_taiga",
+            "minecraft:snowy_taiga",
+            // ── Sne og kulde ──────────────────────────────────────────────────
+            "minecraft:snowy_plains",
+            "minecraft:ice_spikes",
+            "minecraft:snowy_slopes",
+            "minecraft:grove",
+            "minecraft:frozen_peaks",
+            "minecraft:jagged_peaks",
+            // ── Bjerge og stenede ─────────────────────────────────────────────
+            "minecraft:windswept_hills",
+            "minecraft:windswept_gravelly_hills",
+            "minecraft:windswept_forest",
+            "minecraft:stony_peaks",
+            "minecraft:stony_shore",
+            // ── Ørken og savanne ──────────────────────────────────────────────
+            "minecraft:desert",
+            "minecraft:savanna",
+            "minecraft:savanna_plateau",
+            "minecraft:windswept_savanna",
+            // ── Badlands ──────────────────────────────────────────────────────
+            "minecraft:badlands",
+            "minecraft:wooded_badlands",
+            "minecraft:eroded_badlands",
+            // ── Sump ──────────────────────────────────────────────────────────
+            "minecraft:swamp",
+            "minecraft:mangrove_swamp",
+            // ── Strand ────────────────────────────────────────────────────────
+            "minecraft:beach",
+            "minecraft:snowy_beach",
+            // ── Specielle ─────────────────────────────────────────────────────
+            "minecraft:cherry_grove",
+            "minecraft:mushroom_fields"
     );
 
     /**

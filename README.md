@@ -165,12 +165,20 @@ Two config files are created on first run in the Minecraft `config/` directory.
   "leavingSoundMinTicks": 80,
   "leavingSoundMaxTicks": 160,
   "spawnBiomes": [
-    "minecraft:plains",
-    "minecraft:forest",
-    "minecraft:birch_forest",
-    "minecraft:dark_forest",
-    "minecraft:taiga",
-    "minecraft:savanna"
+    "minecraft:plains", "minecraft:sunflower_plains", "minecraft:meadow",
+    "minecraft:forest", "minecraft:flower_forest", "minecraft:birch_forest",
+    "minecraft:old_growth_birch_forest", "minecraft:dark_forest", "minecraft:pale_garden",
+    "minecraft:jungle", "minecraft:sparse_jungle", "minecraft:bamboo_jungle",
+    "minecraft:taiga", "minecraft:old_growth_pine_taiga", "minecraft:old_growth_spruce_taiga",
+    "minecraft:snowy_taiga", "minecraft:snowy_plains", "minecraft:ice_spikes",
+    "minecraft:snowy_slopes", "minecraft:grove", "minecraft:frozen_peaks", "minecraft:jagged_peaks",
+    "minecraft:windswept_hills", "minecraft:windswept_gravelly_hills", "minecraft:windswept_forest",
+    "minecraft:stony_peaks", "minecraft:stony_shore",
+    "minecraft:desert", "minecraft:savanna", "minecraft:savanna_plateau", "minecraft:windswept_savanna",
+    "minecraft:badlands", "minecraft:wooded_badlands", "minecraft:eroded_badlands",
+    "minecraft:swamp", "minecraft:mangrove_swamp",
+    "minecraft:beach", "minecraft:snowy_beach",
+    "minecraft:cherry_grove", "minecraft:mushroom_fields"
   ],
   "spawnWeight": 20,
   "spawnMinGroup": 1,
@@ -204,7 +212,7 @@ Two config files are created on first run in the Minecraft `config/` directory.
 | `leavingSoundEnabled` | true | Whether the thief plays a sound while sneaking away — set to false to disable |
 | `leavingSoundMinTicks` | 80 | Shortest interval between sounds while leaving (4 seconds) |
 | `leavingSoundMaxTicks` | 160 | Longest interval between sounds while leaving (8 seconds) |
-| `spawnBiomes` | 6 biomes | Biome IDs where the mob spawns naturally |
+| `spawnBiomes` | 41 biomes | Biome IDs where the mob spawns naturally |
 | `spawnWeight` | 20 | Spawn frequency (cows = 8 for reference) |
 | `spawnMinGroup` | 1 | Minimum group size per spawn |
 | `spawnMaxGroup` | 2 | Maximum group size per spawn |
