@@ -52,7 +52,7 @@ public abstract class WanderingTraderMixin {
 
         // Opret handlen: 32 emeralds → 1 Syndikatskort
         // ItemCost(emerald, 32) er betalingen; Optional.empty() = ingen sekundær betaling
-        // maxUses=1 sikrer at cortet kan handles præcis én gang pr. trader
+        // maxUses=1 sikrer at kortet kan handles præcis én gang pr. trader
         MerchantOffer offer = new MerchantOffer(
                 new ItemCost(Items.EMERALD, 32),
                 Optional.empty(),

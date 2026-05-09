@@ -18,6 +18,10 @@ import net.minecraft.tags.BlockTags;
 import net.minecraft.tags.FluidTags;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.util.RandomSource;
+import net.minecraft.world.level.chunk.ChunkAccess;
+import net.minecraft.world.level.chunk.LevelChunk;
+import net.minecraft.world.level.levelgen.LegacyRandomSource;
+import net.minecraft.world.level.levelgen.WorldgenRandom;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -167,6 +171,18 @@ public class SyndicateBasePlacer {
     public static final Block SHAFT_MARKER = Blocks.DEAD_TUBE_CORAL_BLOCK;
 
     /**
+     * Salt-konstant der bruges i seed-beregningen for computeCandidate().
+     *
+     * Værdien matcher "salt"-feltet i data/syndicate/worldgen/structure_set/syndicate_base.json,
+     * som bruger "type": "minecraft:random_spread". De to skal altid være ens, fordi
+     * /locate bruger random_spread's getPotentialStructureChunk() og computeCandidate()
+     * skal give præcis det samme resultat for at /locate finder de rigtige chunks.
+     *
+     * Ændr ikke denne konstant uden også at opdatere structure_set-JSON'en — og omvendt.
+     */
+    public static final int SYNDICATE_BASE_SALT = 1254353;
+
+    /**
      * Cachet strukturskabelon — indlæses første gang fra JAR-ressourcen, derefter
      * genbruges direkte fra hukommelsen. StructureTemplate er immutable efter load(),
      * så deling på tværs af valideringsforsøg er trådsikkert.
@@ -226,30 +242,40 @@ public class SyndicateBasePlacer {
      */
     public static ChunkPos computeCandidate(int cellX, int cellZ, long worldSeed,
                                              int spacingChunks, int separationChunks) {
-        // Seed kombinerer verdensfrø med cellekoordinater via store primtal.
-        // Multiplikationen sikrer at (cellX=1, cellZ=0) og (cellX=0, cellZ=1)
-        // giver vidt forskellige seeds — uden primtal ville nærliggende celler
-        // risikere at generere næsten ens offsets.
-        long seed = worldSeed
-                + (long) cellX * 341873128712L
-                + (long) cellZ * 132897987541L;
-        RandomSource rng = RandomSource.create(seed);
+        // Algoritmen matcher præcis minecraft:random_spread's getPotentialStructureChunk().
+        //
+        // Årsagen til at de to SKAL matche:
+        // /locate bruger RandomSpreadStructurePlacement.getPotentialStructureChunk() til at
+        // bestemme kandidat-chunks i en spiral. SyndicateBasePlacer.tryPlaceBase() bruger
+        // computeCandidate() til at bestemme HVILKEN chunk der er kandidat ved chunk-load.
+        // Hvis de to metoder giver forskellige resultater, leder /locate i den forkerte chunk.
+        //
+        // WorldgenRandom(LegacyRandomSource(0)) og setLargeFeatureWithSalt() er præcis den
+        // kombination som random_spread bruger — se RandomSpreadStructurePlacement.java.
+        //
+        // setLargeFeatureWithSalt(worldSeed, cellX, cellZ, salt) beregner:
+        //   seed = cellX*341873128712 + cellZ*132897987541 + worldSeed + salt
+        // og kalder setSeed(seed) på LegacyRandomSource.
+        //
+        // Offset-vinduet er [0, spacing-separation-1] — random_spread bruger nextInt(window)
+        // som giver et offset i dette interval (modsat vores tidligere algoritme der brugte
+        // [separation, spacing-separation-1] for at håndhæve minimumsafstand til cellegrænsen).
 
-        // Beregn offset-vinduet: minimum separation fra cellekant, maksimum (spacing - separation - 1)
-        int minOffset = separationChunks;
-        int maxOffset = spacingChunks - separationChunks - 1;
+        int window = spacingChunks - separationChunks;
 
-        // Hvis vinduet er tomt (spacing for lav eller separation for høj), brug cellens centrum
-        if (maxOffset <= minOffset) {
+        // Fallback hvis spacing er for lav eller separation for høj — brug centrum.
+        if (window <= 0) {
             return new ChunkPos(
                     cellX * spacingChunks + spacingChunks / 2,
                     cellZ * spacingChunks + spacingChunks / 2
             );
         }
 
-        int window = maxOffset - minOffset + 1;
-        int offsetX = minOffset + rng.nextInt(window);
-        int offsetZ = minOffset + rng.nextInt(window);
+        WorldgenRandom rng = new WorldgenRandom(new LegacyRandomSource(0L));
+        rng.setLargeFeatureWithSalt(worldSeed, cellX, cellZ, SYNDICATE_BASE_SALT);
+
+        int offsetX = rng.nextInt(window);
+        int offsetZ = rng.nextInt(window);
 
         return new ChunkPos(
                 cellX * spacingChunks + offsetX,
@@ -1065,96 +1091,6 @@ public class SyndicateBasePlacer {
 
         // Tilføj til persistent lagring (overlever serverrestart via SyndicateSavedData)
         savedData.addBase(base);
-
-        // Fortæl MC's struktur-system at kandidat-chunken indeholder en syndikats-base.
-        // StructureStart gemmes i chunk-NBT og genindlæses automatisk ved chunk-load,
-        // så /locate structure syndicate:syndicate_base virker på tværs af serverrestarter.
-        //
-        // Vi bruger candidate (ChunkPos) som strukturens "hjem-chunk" — det er den chunk
-        // der trigede placeringen, og den er garanteret loaded nu.
-        // PiecesContainer er tom fordi vores stykker er stampet direkte som blokke —
-        // vi behøver ikke registrere dem som StructurePiece-objekter for at /locate virker.
-        try {
-            // lookup() returnerer Optional<Registry<Structure>> — bruger lookup, ikke lookupOrThrow,
-            // så en manglende registry ikke crasher serveren.
-            var registryOpt = level.registryAccess().lookup(Registries.STRUCTURE);
-            if (registryOpt.isPresent()) {
-                ResourceKey<Structure> structureKey = ResourceKey.create(
-                        Registries.STRUCTURE,
-                        Identifier.fromNamespaceAndPath("syndicate", "syndicate_base"));
-                // getOptional(ResourceKey) returnerer Optional<Structure> — selve instansen
-                var structureOpt = registryOpt.get().getOptional(structureKey);
-                if (structureOpt.isPresent()) {
-                    // PiecesContainer skal have mindst ét styk for at StructureStart.isValid()
-                    // returnerer true — uden det returnerer StructureCheck.checkStart()
-                    // START_NOT_PRESENT og /locate finder ingenting.
-                    //
-                    // 1×1×1 bounding box præcis ved shaftSurfacePos (overfladeindgangen):
-                    // /locate beregner positionen fra bounding box'ens centrum — for en 1×1×1 boks
-                    // er centrum = min = max = indgangspositionen. Det sikrer at /locate viser
-                    // de korrekte XYZ+Y-koordinater direkte til skaktens indgang.
-                    //
-                    // StructureStart's hjem-chunk (ChunkPos) skal matche den chunk der indeholder
-                    // shaftSurfacePos — ellers søger StructureCheck i den forkerte chunk og
-                    // /locate returnerer en lidt forskudt position.
-                    // >> 4 svarer til Math.floorDiv(coord, 16) — konverterer blokkoordinat til chunk-koordinat
-                    ChunkPos entranceChunk = new ChunkPos(shaftSurfacePos.getX() >> 4, shaftSurfacePos.getZ() >> 4);
-                    BoundingBox markerBox = new BoundingBox(
-                            shaftSurfacePos.getX(), shaftSurfacePos.getY(), shaftSurfacePos.getZ(),
-                            shaftSurfacePos.getX(), shaftSurfacePos.getY(), shaftSurfacePos.getZ()
-                    );
-                    StructureStart start = new StructureStart(
-                            structureOpt.get(),
-                            entranceChunk,
-                            0,
-                            new PiecesContainer(List.of(new SyndicateBaseMarkerPiece(markerBox)))
-                    );
-                    level.getChunk(entranceChunk.x(), entranceChunk.z())
-                            .setStartForStructure(structureOpt.get(), start);
-
-                    // Opdater StructureCheck's in-memory cache med det nye StructureStart.
-                    // setStartForStructure() skriver kun til chunk-objektet; cachen opdateres normalt
-                    // af onStructureLoad() når chunk-NBT'en genindlæses fra disk ved serverrestart.
-                    // I den aktuelle session (inden restart) skal vi kalde onStructureLoad() selv,
-                    // ellers finder /locate ikke basen fordi cachen stadig siger START_NOT_PRESENT
-                    // fra da chunken blev loaded (før vi satte StructureStart'en).
-                    StructureCheck structureCheck = ((StructureManagerAccessor) level.structureManager()).getStructureCheck();
-                    structureCheck.onStructureLoad(entranceChunk, Map.of(structureOpt.get(), start));
-
-                    // Detaljeret logning til fejlsøgning af /locate-koordinater.
-                    // locate_offset=[8,0,8] i structure_set-JSON forskyder det rapporterede punkt
-                    // med (8,0,8) relativt til entranceChunk's NW-hjørne.
-                    // Forventet /locate-output = (entranceChunk.x*16 + 8, ~, entranceChunk.z*16 + 8).
-                    int expectedLocateX = (entranceChunk.x() << 4) + 8;
-                    int expectedLocateZ = (entranceChunk.z() << 4) + 8;
-                    SyndicateMod.LOGGER.info(
-                            "[/locate debug] shaftSurfacePos=({},{},{})  candidate=({},{})  entranceChunk=({},{})  " +
-                            "entranceChunk NW corner=({},{})  locate_offset=[8,0,8]  " +
-                            "expected /locate output=({},~,{})",
-                            shaftSurfacePos.getX(), shaftSurfacePos.getY(), shaftSurfacePos.getZ(),
-                            candidate.x(), candidate.z(),
-                            entranceChunk.x(), entranceChunk.z(),
-                            entranceChunk.x() << 4, entranceChunk.z() << 4,
-                            expectedLocateX, expectedLocateZ);
-
-                    // Verificer at StructureStart faktisk er gemt i chunken
-                    var registeredStart = level.getChunk(entranceChunk.x(), entranceChunk.z())
-                            .getStartForStructure(structureOpt.get());
-                    SyndicateMod.LOGGER.info(
-                            "[/locate debug] setStartForStructure done — isValid={}, homeChunk=({},{}), bbox={}",
-                            registeredStart != null && registeredStart.isValid(),
-                            registeredStart != null ? registeredStart.getChunkPos().x() : "N/A",
-                            registeredStart != null ? registeredStart.getChunkPos().z() : "N/A",
-                            registeredStart != null ? registeredStart.getBoundingBox() : "N/A");
-                } else {
-                    SyndicateMod.LOGGER.warn(
-                            "syndicate:syndicate_base not found in worldgen registry — /locate will not work. " +
-                            "Check that data/syndicate/worldgen/structure/syndicate_base.json is correct.");
-                }
-            }
-        } catch (Exception e) {
-            SyndicateMod.LOGGER.warn("Failed to register /locate entry for base: {}", e.getMessage());
-        }
 
         // Spawn minimum-vagter med det samme — strukturen er netop stampet,
         // så spawn-chunk-positionerne er garanteret loaded.

@@ -34,6 +34,13 @@ import net.minecraft.sounds.SoundEvent;
 import net.minecraft.world.level.block.SoundType;
 import net.minecraft.world.level.block.entity.BlockEntityType;
 import net.minecraft.world.level.block.state.BlockBehaviour;
+import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
+import net.minecraft.ChatFormatting;
+import net.minecraft.commands.Commands;
+import net.minecraft.network.chat.ClickEvent;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.ComponentUtils;
+import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.world.level.levelgen.structure.StructureType;
 import net.minecraft.world.level.levelgen.structure.pieces.StructurePieceType;
 import org.slf4j.Logger;
@@ -323,6 +330,63 @@ public class SyndicateMod implements ModInitializer {
                 CreativeModeTab.TabVisibility.PARENT_AND_SEARCH_TABS
         ));
 
+        // Overstyr /locate structure syndicate:syndicate_base med et direkte cache-opslag.
+        //
+        // Vanilla's /locate scanner i en spiral og loader chunks undervejs — det fryser
+        // main-tråden i flere sekunder. I stedet registrerer vi en Brigadier-literal-node
+        // med præcis vores struktur-ID. I Brigadier vinder literals over arguments under
+        // parsing, så vores execute-funktion kører i stedet for vanilla's spiral-søgning.
+        // Resultatet er et O(n)-opslag i SyndicateBaseManager (n = antal baser) — instant.
+        CommandRegistrationCallback.EVENT.register((dispatcher, registries, environment) -> {
+            dispatcher.register(
+                Commands.literal("locate")
+                    .then(Commands.literal("structure")
+                        .then(Commands.literal("syndicate:syndicate_base")
+                            .executes(ctx -> {
+                                var source = ctx.getSource();
+                                BlockPos origin = BlockPos.containing(source.getPosition());
+                                ServerLevel level = source.getLevel();
+
+                                SyndicateBase nearest = SyndicateBaseManager.findNearest(level, origin);
+                                if (nearest == null) {
+                                    source.sendFailure(Component.literal(
+                                        "Ingen Syndicate Base fundet — ingen baser er placeret i denne dimension endnu"));
+                                    return 0;
+                                }
+
+                                BlockPos pos = nearest.getPosition();
+                                // 2D-afstand (ignorerer Y) — samme konvention som vanilla /locate
+                                int dist = (int) Math.sqrt(
+                                    (double)(pos.getX() - origin.getX()) * (pos.getX() - origin.getX()) +
+                                    (double)(pos.getZ() - origin.getZ()) * (pos.getZ() - origin.getZ())
+                                );
+
+                                // Klikbar koordinat-blok med /tp-forslag ved klik
+                                var coords = ComponentUtils.wrapInSquareBrackets(
+                                    Component.translatable("chat.coordinates",
+                                            pos.getX(), pos.getY(), pos.getZ())
+                                        .withStyle(s -> s
+                                            .withColor(ChatFormatting.GREEN)
+                                            .withClickEvent(new ClickEvent.SuggestCommand(
+                                                "/tp @s " + pos.getX() + " " + pos.getY() + " " + pos.getZ()))
+                                            .withHoverEvent(new HoverEvent.ShowText(
+                                                Component.translatable("chat.coordinates.tooltip")))
+                                        )
+                                );
+
+                                final int distFinal = dist;
+                                source.sendSuccess(() ->
+                                    Component.literal("Nærmeste syndicate:syndicate_base er ved ")
+                                        .append(coords)
+                                        .append(Component.literal(" (" + distFinal + " blokke væk)")),
+                                    false);
+                                return 1;
+                            })
+                        )
+                    )
+            );
+        });
+
         ServerLifecycleEvents.SERVER_STOPPED.register(server -> {
             SyndicateBaseManager.clearAll();
             SyndicateChestTracker.clearAll();
@@ -331,7 +395,8 @@ public class SyndicateMod implements ModInitializer {
         });
 
         ServerLifecycleEvents.SERVER_STARTED.register(server -> {
-            SyndicateSavedData savedData = SyndicateSavedData.getOrCreate(server.overworld());
+            ServerLevel overworld = server.overworld();
+            SyndicateSavedData savedData = SyndicateSavedData.getOrCreate(overworld);
             for (SyndicateBase base : savedData.getBases()) {
                 SyndicateBaseManager.addBase(base);
             }

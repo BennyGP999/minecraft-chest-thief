@@ -63,10 +63,13 @@ public class SyndicateBaseStructure extends Structure {
      *
      * Syndicats-baser placeres udelukkende af SyndicateBasePlacer.doPlaceBase() ved
      * chunk-load. Efter placering kalder doPlaceBase() StructureCheck.onStructureLoad()
-     * direkte for at registrere StructureStart'en i MC's in-memory cache — det er dén
-     * mekanisme der gør /locate korrekt i den aktuelle session. Ved serverrestart
-     * genindlæses StructureStart'en automatisk fra chunk-NBT via det normale
-     * onStructureLoad-kald i chunk-loading-pipelinen.
+     * direkte for at registrere StructureStart'en i MC's in-memory cache. Ved serverrestart
+     * genregistrerer SyndicateMod.reregisterStructureStarts() cachen for alle kendte baser
+     * straks ved SERVER_STARTED — så /locate virker med det samme.
+     *
+     * /locate bruger minecraft:random_spread (spacing=32, separation=12, salt=1254353)
+     * til at finde kandidat-chunks. SyndicateBasePlacer.computeCandidate() bruger præcis
+     * den samme algoritme — se SYNDICATE_BASE_SALT-konstanten.
      *
      * @param ctx worldgen-kontekst (ubrugt)
      * @return Optional.empty() — ingen worldgen-placering ønsket
