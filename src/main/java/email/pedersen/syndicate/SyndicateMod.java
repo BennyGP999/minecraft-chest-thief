@@ -350,13 +350,29 @@ public class SyndicateMod implements ModInitializer {
                                 ServerLevel level = source.getLevel();
 
                                 SyndicateBase nearest = SyndicateBaseManager.findNearest(level, origin);
-                                if (nearest == null) {
-                                    source.sendFailure(Component.literal(
-                                        "Ingen Syndicate Base fundet — ingen baser er placeret i denne dimension endnu"));
-                                    return 0;
+
+                                // Bestem display-position og label afhængigt af om basen er
+                                // placeret (koordinater til indgang) eller teoretisk (chunk-centrum).
+                                final BlockPos pos;
+                                final boolean isTheoretical;
+                                if (nearest != null) {
+                                    pos = nearest.getPosition();
+                                    isTheoretical = false;
+                                } else {
+                                    // Ingen base placeret endnu — beregn nærmeste kandidat-chunks centrum.
+                                    // Spilleren skal flyve dertil for at trigge placeringen.
+                                    ChunkPos candidate = findNearestTheoreticalCandidate(level, origin);
+                                    if (candidate == null) {
+                                        source.sendFailure(Component.literal(
+                                            "Ingen Syndicate Base fundet og ingen kandidat-celle tilgængelig"));
+                                        return 0;
+                                    }
+                                    // Y=64 er en rimelig approksimation af terrænoverfladen — den præcise
+                                    // Y kendes ikke før chunken er loaded og basen er placeret.
+                                    pos = candidate.getMiddleBlockPosition(64);
+                                    isTheoretical = true;
                                 }
 
-                                BlockPos pos = nearest.getPosition();
                                 // 2D-afstand (ignorerer Y) — samme konvention som vanilla /locate
                                 int dist = (int) Math.sqrt(
                                     (double)(pos.getX() - origin.getX()) * (pos.getX() - origin.getX()) +
@@ -368,7 +384,7 @@ public class SyndicateMod implements ModInitializer {
                                     Component.translatable("chat.coordinates",
                                             pos.getX(), pos.getY(), pos.getZ())
                                         .withStyle(s -> s
-                                            .withColor(ChatFormatting.GREEN)
+                                            .withColor(isTheoretical ? ChatFormatting.YELLOW : ChatFormatting.GREEN)
                                             .withClickEvent(new ClickEvent.SuggestCommand(
                                                 "/tp @s " + pos.getX() + " " + pos.getY() + " " + pos.getZ()))
                                             .withHoverEvent(new HoverEvent.ShowText(
@@ -377,11 +393,19 @@ public class SyndicateMod implements ModInitializer {
                                 );
 
                                 final int distFinal = dist;
-                                source.sendSuccess(() ->
-                                    Component.literal("Nærmeste syndicate:syndicate_base er ved ")
-                                        .append(coords)
-                                        .append(Component.literal(" (" + distFinal + " blokke væk)")),
-                                    false);
+                                if (isTheoretical) {
+                                    source.sendSuccess(() ->
+                                        Component.literal("Nærmeste syndicate:syndicate_base er endnu ikke genereret — flyt til ")
+                                            .append(coords)
+                                            .append(Component.literal(" (" + distFinal + " blokke væk) for at generere basen")),
+                                        false);
+                                } else {
+                                    source.sendSuccess(() ->
+                                        Component.literal("Nærmeste syndicate:syndicate_base er ved ")
+                                            .append(coords)
+                                            .append(Component.literal(" (" + distFinal + " blokke væk)")),
+                                        false);
+                                }
                                 return 1;
                             })
                         )
@@ -592,6 +616,68 @@ public class SyndicateMod implements ModInitializer {
      *
      * @param level dimensionen der tjekkes
      */
+    /**
+     * Finder nærmeste kandidat-chunk der endnu ikke har en placeret eller hard-rejected base.
+     *
+     * Bruges af /locate når ingen base er placeret endnu (ny verden, creative-mode-test).
+     * Returnerer chunk-centrum så spilleren ved præcis hvilken retning de skal flyve.
+     *
+     * Spiral-søgning fra spillerens celle udad: radius 0 = spillerens egen celle,
+     * radius 1 = de 8 naboer, osv. Stopper ved første radius med én gyldig kandidat
+     * (typisk radius 0, dvs. O(1) i praksis).
+     *
+     * @param level   serverniveauet — bruges til seed og dimension-key
+     * @param origin  spillerens position — udgangspunkt for spiral-søgningen
+     * @return den nærmeste ubesøgte kandidat-chunk, eller null hvis alle celler er afvist
+     */
+    @org.jetbrains.annotations.Nullable
+    private static ChunkPos findNearestTheoreticalCandidate(ServerLevel level, BlockPos origin) {
+        SyndicateConfig config = SyndicateConfig.getInstance();
+        long seed = level.getSeed();
+        int spacing = config.getBaseSpacingChunks();
+        int separation = config.getBaseSeparationChunks();
+
+        ChunkPos originChunk = new ChunkPos(origin.getX() >> 4, origin.getZ() >> 4);
+        int[] originCell = SyndicateBasePlacer.computeCell(originChunk, spacing);
+        int ocx = originCell[0];
+        int ocz = originCell[1];
+
+        SyndicateSavedData savedData = SyndicateSavedData.getOrCreate(level);
+        ResourceKey<Level> dimension = level.dimension();
+
+        // Spiral-søg: radius 0 (egen celle), 1, 2, … maks 4 celler ud
+        for (int radius = 0; radius <= 4; radius++) {
+            ChunkPos best = null;
+            double bestDist = Double.MAX_VALUE;
+
+            for (int dx = -radius; dx <= radius; dx++) {
+                for (int dz = -radius; dz <= radius; dz++) {
+                    // Kun kanten af kvadratet (ikke det indre — det er dækket af mindre radii)
+                    if (Math.abs(dx) != radius && Math.abs(dz) != radius) continue;
+
+                    int cellX = ocx + dx;
+                    int cellZ = ocz + dz;
+
+                    // Spring over celler der allerede har en base eller er permanent afvist
+                    if (savedData.isHardRejected(cellX, cellZ, dimension)) continue;
+                    if (SyndicateBaseManager.hasBaseInCell(cellX, cellZ, dimension, spacing)) continue;
+
+                    ChunkPos candidate = SyndicateBasePlacer.computeCandidate(cellX, cellZ, seed, spacing, separation);
+                    BlockPos center = candidate.getMiddleBlockPosition(64);
+                    double dist = origin.distSqr(center);
+                    if (dist < bestDist) {
+                        bestDist = dist;
+                        best = candidate;
+                    }
+                }
+            }
+
+            // Første radius med en gyldig kandidat — returner straks (ingen grund til at søge videre)
+            if (best != null) return best;
+        }
+        return null;
+    }
+
     private static void checkDestroyedBases(ServerLevel level) {
         List<SyndicateBase> bases = SyndicateBaseManager.getBases(level.dimension());
         if (bases == null || bases.isEmpty()) return;
