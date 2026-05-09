@@ -223,7 +223,7 @@ Two config files are created on first run in the Minecraft `config/` directory.
   "starterLootTotal": 10,
   "starterValuableCount": 3,
   "raidThreshold": 0.3,
-  "mapTraderChance": 0.25,
+  "mapTraderChance": 0.50,
   "lootDeliveryRadius": 200.0,
   "guardRespawnIntervalTicks": 6000,
   "guardRespawnPlayerBuffer": 8
@@ -232,19 +232,19 @@ Two config files are created on first run in the Minecraft `config/` directory.
 
 | Field | Default | Description |
 |-------|---------|-------------|
-| `guardArrowDamage` | 2.3 | Base damage of each carrot arrow fired by a guard. Vanilla skeleton arrow = 2.0. Minimum: 0.5 |
-| `baseSpacingChunks` | 64 | Distance in chunks between base region centres (~1024 blocks). Higher = rarer bases |
-| `baseSeparationChunks` | 24 | Minimum distance in chunks from a cell boundary to the base centre. Must be less than half of `baseSpacingChunks` |
-| `guardsPerItem` | 0.5 | Guards spawned per item in the base (`floor(lootCount × guardsPerItem)`), clamped to `[minGuards, maxGuards]` |
-| `minGuards` | 2 | Minimum guards even when the base is empty |
-| `maxGuards` | 16 | Maximum guards regardless of loot count |
-| `starterLootTotal` | 10 | Total number of items placed across all chests when the base is first created (max 27) |
-| `starterValuableCount` | 3 | Of `starterLootTotal`, how many are valuable items from the ChestThief priority list (medium priority 100–400). The rest are common filler. Must be ≤ `starterLootTotal` |
-| `raidThreshold` | 0.3 | Fraction of peak loot that must remain for the base not to count as raided (0.3 = raided when under 30% remains) |
-| `mapTraderChance` | 0.25 | Probability (0.0–1.0) that a Wandering Trader carries a Syndicate Map |
-| `lootDeliveryRadius` | 200.0 | Maximum distance in blocks within which a departing thief searches for a Syndicate Chest to deliver loot into. If none is found, loot is lost |
-| `guardRespawnIntervalTicks` | 6000 | Ticks between each guard respawn check (6000 = 5 minutes). Respawn only happens when no player is within the base bounds plus `guardRespawnPlayerBuffer` |
-| `guardRespawnPlayerBuffer` | 8 | Extra blocks around the base AABB used for the player proximity check during guard respawn. Prevents guards materialising mid-fight |
+| `guardArrowDamage` | 2.3     | Base damage of each carrot arrow fired by a guard. Vanilla skeleton arrow = 2.0. Minimum: 0.5 |
+| `baseSpacingChunks` | 64      | Distance in chunks between base region centres (~1024 blocks). Higher = rarer bases |
+| `baseSeparationChunks` | 24      | Minimum distance in chunks from a cell boundary to the base centre. Must be less than half of `baseSpacingChunks` |
+| `guardsPerItem` | 0.5     | Guards spawned per item in the base (`floor(lootCount × guardsPerItem)`), clamped to `[minGuards, maxGuards]` |
+| `minGuards` | 2       | Minimum guards even when the base is empty |
+| `maxGuards` | 16      | Maximum guards regardless of loot count |
+| `starterLootTotal` | 10      | Total number of items placed across all chests when the base is first created (max 27) |
+| `starterValuableCount` | 3       | Of `starterLootTotal`, how many are valuable items from the ChestThief priority list (medium priority 100–400). The rest are common filler. Must be ≤ `starterLootTotal` |
+| `raidThreshold` | 0.3     | Fraction of peak loot that must remain for the base not to count as raided (0.3 = raided when under 30% remains) |
+| `mapTraderChance` | 0.50     | Probability (0.0–1.0) that a Wandering Trader carries a Syndicate Map |
+| `lootDeliveryRadius` | 200.0   | Maximum distance in blocks within which a departing thief searches for a Syndicate Chest to deliver loot into. If none is found, loot is lost |
+| `guardRespawnIntervalTicks` | 6000    | Ticks between each guard respawn check (6000 = 5 minutes). Respawn only happens when no player is within the base bounds plus `guardRespawnPlayerBuffer` |
+| `guardRespawnPlayerBuffer` | 8       | Extra blocks around the base AABB used for the player proximity check during guard respawn. Prevents guards materialising mid-fight |
 
 ### `chest_thief_values.json`
 

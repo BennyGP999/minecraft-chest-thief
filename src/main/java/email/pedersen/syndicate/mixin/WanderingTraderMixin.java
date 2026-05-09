@@ -28,7 +28,7 @@ import java.util.Optional;
  *   - xpValue=0: ingen XP til spilleren (kortet er en service, ikke en normal handel)
  *   - priceMultiplier=0.0: prisen er fast — ej påvirket af handelsmønsteret (demand)
  *
- * Sandsynlighed styres af SyndicateConfig.mapTraderChance (standard 0.25 = 25 %).
+ * Sandsynlighed styres af SyndicateConfig.mapTraderChance (standard 0.50 = 50 %).
  * Bruger level.getRandom() fremfor en lokal Random for at respektere serverens seed-baserede
  * RNG-stream — giver reproducerbare resultater ved samme world seed.
  */
