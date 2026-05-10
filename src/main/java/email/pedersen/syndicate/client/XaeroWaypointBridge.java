@@ -14,24 +14,15 @@ import xaero.hud.minimap.world.MinimapWorld;
 import xaero.hud.minimap.world.MinimapWorldManager;
 
 /**
- * Bro til Xaero's Minimap — opretter permanente waypoints ved Syndicate Bases.
+ * Bro til Xaero's Minimap — opretter og fjerner permanente waypoints ved Syndicate Bases.
  *
- * Klassen indlæses kun når Xaero's Minimap er installeret og et waypoint faktisk
- * skal oprettes. For at undgå NoClassDefFoundError ved opstart (hvis Xaero mangler)
+ * Klassen indlæses kun når Xaero's Minimap er installeret og et kald faktisk
+ * foretages. For at undgå NoClassDefFoundError ved opstart (hvis Xaero mangler)
  * må alle kald til denne klasse ske inde i en lambda — aldrig via method reference —
  * så JVM'en kun loader Xaero-klasserne i det øjeblik lambdaen eksekveres, ikke
  * når den oprettes.
  *
- * Eksempel fra kaldssiden:
- * <pre>
- *   if (FabricLoader.getInstance().isModLoaded("xaerominimap")) {
- *       final BlockPos p = pos;
- *       Minecraft.getInstance().execute(
- *           () -> XaeroWaypointBridge.addWaypoint(p, "Syndicate Base"));
- *   }
- * </pre>
- *
- * Metoden skal altid kaldes på klient-tråden (via Minecraft.execute).
+ * Alle metoder skal kaldes på klient-tråden (via Minecraft.execute).
  *
  * API-kæde bekræftet ved bytecode-inspektion af Xaero's Minimap 26.1.2-25.3.12:
  *   XaeroMinimapSession.getCurrentSession()
@@ -40,7 +31,7 @@ import xaero.hud.minimap.world.MinimapWorldManager;
  *     → getWorldManager()      (MinimapWorldManager)
  *     → getCurrentWorld()      (MinimapWorld)
  *     → getCurrentWaypointSet()
- *     → add(Waypoint, boolean)
+ *     → add(Waypoint, boolean) / remove(Waypoint)
  */
 public class XaeroWaypointBridge {
 
@@ -106,5 +97,43 @@ public class XaeroWaypointBridge {
         // add(wp, true): true = tilføj øverst i listen
         waypointSet.add(wp, true);
         LOGGER.info("Xaero waypoint '{}' oprettet ved {}", name, pos);
+    }
+
+    /**
+     * Fjerner et waypoint ved den givne (X, Z)-position fra Xaero's Minimap.
+     * Kaldes når en Syndicate Base fjernes fra registret (fx fordi alle dens kister
+     * er ødelagt af TNT), så minimap'et ikke viser en pil til et tomt hul.
+     *
+     * Matcher kun på (X, Z) — samme konvention som addWaypoint's duplikattjek.
+     *
+     * @param pos  basens position — X og Z bruges til at finde waypoint'et
+     */
+    public static void removeWaypoint(BlockPos pos) {
+        XaeroMinimapSession xms = XaeroMinimapSession.getCurrentSession();
+        if (xms == null) return;
+
+        MinimapProcessor processor = xms.getMinimapProcessor();
+        MinimapSession session = processor.getSession();
+        MinimapWorldManager worldManager = session.getWorldManager();
+
+        MinimapWorld world = worldManager.getCurrentWorld();
+        if (world == null) return;
+
+        WaypointSet waypointSet = world.getCurrentWaypointSet();
+        if (waypointSet == null) return;
+
+        // Indsaml matches i en separat liste inden sletning — man må ikke fjerne
+        // elementer fra en Iterable mens man itererer over den (ConcurrentModificationException).
+        java.util.List<Waypoint> toRemove = new java.util.ArrayList<>();
+        for (Waypoint wp : waypointSet.getWaypoints()) {
+            if (wp.getX() == pos.getX() && wp.getZ() == pos.getZ()) {
+                toRemove.add(wp);
+            }
+        }
+
+        for (Waypoint wp : toRemove) {
+            waypointSet.remove(wp);
+            LOGGER.info("Xaero waypoint '{}' fjernet (base ødelagt ved {})", wp.getName(), pos);
+        }
     }
 }

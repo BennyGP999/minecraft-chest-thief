@@ -806,6 +806,17 @@ public class SyndicateMod implements ModInitializer {
             savedData.removeBase(base);
             LOGGER.info("Base ved {} er ødelagt (alle kister væk) — fjernet fra registret",
                     base.getPosition());
+
+            // Fjern det tilhørende Xaero-waypoint hvis spilleren havde det slået til.
+            // Samme EnvType/isModLoaded/lambda-mønster som ved oprettelse.
+            if (SyndicateConfig.getInstance().isCreateXaeroWaypoints()
+                    && FabricLoader.getInstance().getEnvironmentType() == EnvType.CLIENT
+                    && FabricLoader.getInstance().isModLoaded("xaerominimap")) {
+                final BlockPos destroyedPos = base.getPosition();
+                net.minecraft.client.Minecraft.getInstance().execute(
+                    () -> email.pedersen.syndicate.client.XaeroWaypointBridge
+                        .removeWaypoint(destroyedPos));
+            }
         }
     }
 }

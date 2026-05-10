@@ -394,7 +394,7 @@ public class ClothConfigScreenBuilder {
         cat.addEntry(e.startDoubleField(
                         Component.translatable("config.syndicate.map_trader_chance"),
                         syn.getMapTraderChance())
-                .setDefaultValue(0.25)
+                .setDefaultValue(0.5)
                 .setMin(0.0).setMax(1.0)
                 .setSaveConsumer(syn::setMapTraderChance)
                 .setTooltip(Component.translatable("config.syndicate.map_trader_chance.tooltip"))

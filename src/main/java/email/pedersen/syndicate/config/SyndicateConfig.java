@@ -104,7 +104,7 @@ public class SyndicateConfig {
      * Sandsynlighed (0.0–1.0) for at en Wandering Trader har Syndikatskort i sit sortiment.
      * 0.25 = 25 % chance pr. trader. Standard: 0.25.
      */
-    private double mapTraderChance = 0.25;
+    private double mapTraderChance = 0.5;
 
     /**
      * Styrer om basens position automatisk tilføjes som waypoint i Xaero's Minimap
