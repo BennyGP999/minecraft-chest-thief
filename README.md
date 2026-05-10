@@ -37,7 +37,7 @@ The thief does **not** become hostile at night. Instead it uses the darkness to 
 Chest Thieves are not lone operators — they belong to an underground criminal network known as **The Syndicate**. When a Chest Thief departs with stolen loot, it does not simply vanish. It delivers everything to a hidden base buried beneath the surface.
 
 **Bases**
-- Syndicate bases generate automatically underground, spaced roughly every 64 chunks (configurable)
+- Syndicate bases generate automatically underground, spaced roughly every 32 chunks (~512 blocks, configurable)
 - Each base is a fortified bunker stamped from a hand-designed `.nbt` structure and placed flush with the natural terrain surface
 - The shaft entrance on the surface is marked by a square of mossy cobblestone with a ladder descending into the dark
 - Bases can be located with the vanilla command `/locate structure syndicate:syndicate_base`, which returns the exact XYZ coordinates of the shaft entrance
@@ -50,20 +50,22 @@ Chest Thieves are not lone operators — they belong to an underground criminal 
 - Items are shuffled and spread evenly across all chests in the base
 
 **Loot accumulation**
-- Every Chest Thief that completes a delivery drops its stolen items into the nearest base's chests (within `lootDeliveryRadius` blocks, default 200)
-- If no base is close enough or the chests are full, the items are sold locally and lost permanently
+- Every Chest Thief that completes a delivery drops its stolen items into the nearest base's chests — by default the search radius is effectively unlimited, so loot always reaches a base if one exists
+- If the base chests are full, the excess items are lost permanently
 - The more thieves operate in a region, the richer the base becomes
 
 **Finding a base**
-- **Wandering Traders** occasionally carry a **Syndicate Map** (25% chance by default, price: 32 emeralds)
+- **Wandering Traders** occasionally carry a **Syndicate Map** (50% chance by default, price: 32 emeralds)
 - Right-clicking the map generates a filled Minecraft map centred on the nearest active base, marked with a target X
 - The map behaves like a treasure map — your position is shown as a moving marker even when you are far outside the map's bounds, making navigation to the base straightforward
 - You can also use `/locate structure syndicate:syndicate_base` to get the precise coordinates of the shaft entrance
+- If you have **Xaero's Minimap** installed and enable the option in the config screen, a waypoint is added automatically when you locate a base — and removed if the base is later destroyed
 
 **The Syndicate Chest**
-- A custom block (craftable, also found in creative mode under Functional Blocks) that acts as the delivery point for Chest Thieves
+- A custom block (also found in creative mode under Functional Blocks) that acts as the delivery point for Chest Thieves
 - Visually distinct from vanilla chests — dark red texture with the same geometry
-- Thieves search for the nearest Syndicate Chest within the delivery radius when departing; if found, stolen loot is placed inside
+- Thieves search for the nearest Syndicate Chest when departing; stolen loot is placed inside
+- Requires **Silk Touch** to pick up — without it the block is destroyed and its contents drop as normal items. This lets players relocate chests to set up their own delivery points anywhere in the world
 
 **Raiding a base**
 - Bases are guarded by **Syndicate Guards** — ranged fighters who never leave the bunker
@@ -75,17 +77,17 @@ Chest Thieves are not lone operators — they belong to an underground criminal 
 
 ### Departure
 When a Chest Thief has carried a full inventory for long enough, it departs with its loot:
-- After **20 seconds** with a full inventory, it begins walking away
+- After **2 seconds** with a full inventory, it begins walking away
 - Walks away for **30 seconds**, then despawns — the loot is delivered to the nearest Syndicate base or sold on the black market
 - Attacking it during departure triggers the normal panic or berserker response; the departure timer continues regardless
-- A Chest Thief that never fills its inventory will still depart after **2 Minecraft days**
+- A Chest Thief that never fills its inventory will still depart after **4 minutes**
 - Chest Thieves never despawn randomly based on distance — only through departure or death
 
 ### When Attacked
 Two possible outcomes chosen at random (configurable chance), applies both day and night:
 
-- **Panic (60% default):** Sprints away from the attacker, **drops one random carried item** on the ground as it flees. Resumes normal behaviour once the panic period ends.
-- **Berserker (40% default):** Enters an aggressive state for a configurable duration (default: 15 seconds):
+- **Panic (40% default):** Sprints away from the attacker, **drops one random carried item** on the ground as it flees. Resumes normal behaviour once the panic period ends.
+- **Berserker (60% default):** Enters an aggressive state for a configurable duration (default: 15 seconds):
   - **Movement speed increased by 50%** — can outrun most players
   - Aggressively scans for targets every second — if the current target dies or escapes, automatically picks a new one (priority: last attacker → nearest player → iron golem → villager)
   - Being hit again **resets the timer**, extending the aggression
@@ -145,8 +147,8 @@ Two config files are created on first run in the Minecraft `config/` directory.
   "chestDetectionRadius": 100,
   "chestDetectionMaxVerticalDist": 16,
   "stealOnlyListedItems": false,
-  "panicChance": 0.6,
-  "panicDurationTicks": 80,
+  "panicChance": 0.4,
+  "panicDurationTicks": 200,
   "leaveDurationTicks": 200,
   "maxCarrySlots": 5,
   "berserkDurationTicks": 300,
@@ -158,9 +160,9 @@ Two config files are created on first run in the Minecraft `config/` directory.
   "stealthMaxTicks": 140,
   "stealthCooldownMinTicks": 200,
   "stealthCooldownMaxTicks": 400,
-  "departDelayTicks": 400,
+  "departDelayTicks": 40,
   "departDurationTicks": 600,
-  "maxAgeTicks": 48000,
+  "maxAgeTicks": 4800,
   "leavingSoundEnabled": true,
   "leavingSoundMinTicks": 80,
   "leavingSoundMaxTicks": 160,
@@ -193,8 +195,8 @@ Two config files are created on first run in the Minecraft `config/` directory.
 | `chestDetectionRadius` | 100 | Chest detection radius in blocks |
 | `chestDetectionMaxVerticalDist` | 16 | Maximum vertical distance (up or down) to detect a chest |
 | `stealOnlyListedItems` | false | If true, only items listed in `chest_thief_values.json` are stolen |
-| `panicChance` | 0.6 | Probability (0.0–1.0) of panicking vs. going berserk when hit |
-| `panicDurationTicks` | 80 | How long the mob sprints away during panic (4 seconds) |
+| `panicChance` | 0.4 | Probability (0.0–1.0) of panicking vs. going berserk when hit |
+| `panicDurationTicks` | 200 | How long the mob sprints away during panic (10 seconds) |
 | `leaveDurationTicks` | 200 | How long the mob walks away from a chest after filling up (10 seconds) |
 | `maxCarrySlots` | 5 | Maximum number of item stacks the mob can carry at once |
 | `berserkDurationTicks` | 300 | How long berserker mode lasts without new provocations (15 seconds) |
@@ -206,9 +208,9 @@ Two config files are created on first run in the Minecraft `config/` directory.
 | `stealthMaxTicks` | 140 | Longest invisibility duration (7 seconds) |
 | `stealthCooldownMinTicks` | 200 | Shortest cooldown between invisibility periods (10 seconds) |
 | `stealthCooldownMaxTicks` | 400 | Longest cooldown between invisibility periods (20 seconds) |
-| `departDelayTicks` | 400 | How long with a full inventory before departure begins (20 seconds) |
+| `departDelayTicks` | 40 | How long with a full inventory before departure begins (2 seconds) |
 | `departDurationTicks` | 600 | How long the mob visibly walks away before despawning (30 seconds) |
-| `maxAgeTicks` | 48000 | Maximum lifetime before forced departure regardless of inventory (2 Minecraft days) |
+| `maxAgeTicks` | 4800 | Maximum lifetime before forced departure regardless of inventory (4 minutes) |
 | `leavingSoundEnabled` | true | Whether the thief plays a sound while sneaking away — set to false to disable |
 | `leavingSoundMinTicks` | 80 | Shortest interval between sounds while leaving (4 seconds) |
 | `leavingSoundMaxTicks` | 160 | Longest interval between sounds while leaving (8 seconds) |
@@ -223,16 +225,16 @@ Two config files are created on first run in the Minecraft `config/` directory.
 ```json
 {
   "guardArrowDamage": 2.3,
-  "baseSpacingChunks": 64,
-  "baseSeparationChunks": 24,
+  "baseSpacingChunks": 32,
+  "baseSeparationChunks": 12,
   "guardsPerItem": 0.5,
-  "minGuards": 2,
+  "minGuards": 4,
   "maxGuards": 16,
   "starterLootTotal": 10,
   "starterValuableCount": 3,
   "raidThreshold": 0.3,
   "mapTraderChance": 0.50,
-  "lootDeliveryRadius": 200.0,
+  "lootDeliveryRadius": 1000000.0,
   "guardRespawnIntervalTicks": 6000,
   "guardRespawnPlayerBuffer": 8
 }
@@ -241,16 +243,16 @@ Two config files are created on first run in the Minecraft `config/` directory.
 | Field | Default | Description |
 |-------|---------|-------------|
 | `guardArrowDamage` | 2.3     | Base damage of each carrot arrow fired by a guard. Vanilla skeleton arrow = 2.0. Minimum: 0.5 |
-| `baseSpacingChunks` | 64      | Distance in chunks between base region centres (~1024 blocks). Higher = rarer bases |
-| `baseSeparationChunks` | 24      | Minimum distance in chunks from a cell boundary to the base centre. Must be less than half of `baseSpacingChunks` |
+| `baseSpacingChunks` | 32      | Distance in chunks between base region centres (~512 blocks). Higher = rarer bases |
+| `baseSeparationChunks` | 12      | Minimum distance in chunks from a cell boundary to the base centre. Must be less than half of `baseSpacingChunks` |
 | `guardsPerItem` | 0.5     | Guards spawned per item in the base (`floor(lootCount × guardsPerItem)`), clamped to `[minGuards, maxGuards]` |
-| `minGuards` | 2       | Minimum guards even when the base is empty |
+| `minGuards` | 4       | Minimum guards even when the base is empty |
 | `maxGuards` | 16      | Maximum guards regardless of loot count |
 | `starterLootTotal` | 10      | Total number of items placed across all chests when the base is first created (max 27) |
 | `starterValuableCount` | 3       | Of `starterLootTotal`, how many are valuable items from the ChestThief priority list (medium priority 100–400). The rest are common filler. Must be ≤ `starterLootTotal` |
 | `raidThreshold` | 0.3     | Fraction of peak loot that must remain for the base not to count as raided (0.3 = raided when under 30% remains) |
 | `mapTraderChance` | 0.50     | Probability (0.0–1.0) that a Wandering Trader carries a Syndicate Map |
-| `lootDeliveryRadius` | 200.0   | Maximum distance in blocks within which a departing thief searches for a Syndicate Chest to deliver loot into. If none is found, loot is lost |
+| `lootDeliveryRadius` | 1000000 | Maximum distance in blocks within which a departing thief searches for a Syndicate Chest to deliver loot into. The default is effectively unlimited — lower it to restrict deliveries to nearby bases only |
 | `guardRespawnIntervalTicks` | 6000    | Ticks between each guard respawn check (6000 = 5 minutes). Respawn only happens when no player is within the base bounds plus `guardRespawnPlayerBuffer` |
 | `guardRespawnPlayerBuffer` | 8       | Extra blocks around the base AABB used for the player proximity check during guard respawn. Prevents guards materialising mid-fight |
 
@@ -287,9 +289,65 @@ assets/syndicate/sounds/guard_shoot.ogg
 
 Replace this file with any mono OGG Vorbis file to change the sound. The file is registered under the sound event ID `syndicate:entity.syndicate_guard.shoot` in `assets/syndicate/sounds.json`. No code changes are required.
 
+### Carrot arrow hit sound
+
+The sound played when a carrot arrow hits a block is loaded from:
+
+```
+assets/syndicate/sounds/carrot_hit.ogg
+```
+
+Registered under `syndicate:entity.carrot_arrow.hit`. Replace the file to customise the impact sound without touching code.
+
 ---
 
 ## Changelog
+
+### 1.2.5
+
+**Performance and polish**
+
+- Syndicate base placement is now limited to one candidate cell per server tick, preventing multiple expensive block scans from running in the same tick
+- Block scan for terrain validation now starts from the surface downward — player structures and vanilla features (villages, mineshafts) are rejected after scanning ~550 blocks instead of up to ~17,000
+- Wall-clock rate limiting (1 second) between validation attempts replaces tick-based limiting, which broke during server catch-up mode
+- `/locate structure syndicate:syndicate_base` now shows a clear failure message when no bases have been placed yet, instead of unexplained coordinates
+
+### 1.2.4
+
+**Syndicate Chest and Xaero's Minimap**
+
+- Syndicate Chest now requires **Silk Touch** to pick up — without it the block breaks and drops its contents. This allows players to relocate chests to create custom delivery points anywhere in the world
+- When a Syndicate Base is destroyed (all chests removed), any corresponding **Xaero's Minimap waypoint** is automatically removed
+- Wandering Trader map chance default raised to 50%
+
+### 1.2.3
+
+**Config screen and Xaero's Minimap integration**
+
+Two soft-dependency integrations — both are purely additive and the mod works identically without them:
+
+- **Mod Menu + Cloth Config**: a full config screen accessible from the Mod Menu "Config" button, covering all fields from both config files with sliders, number fields and boolean toggles. Changes are saved to the existing JSON files
+- **Xaero's Minimap**: automatically creates a "Syndicate Base" waypoint when a base is located via `/locate` or the Syndicate Map. Off by default — opt in via the config screen toggle
+
+### 1.2.2
+
+**Snappier thief behaviour**
+
+- `departDelayTicks` reduced from 400 to 40 — the thief now leaves within 2 seconds of filling its inventory instead of waiting 20 seconds
+- `maxAgeTicks` reduced from 48000 to 4800 — a thief that finds nothing to steal gives up and despawns after 4 minutes instead of 2 Minecraft days
+
+### 1.2.1
+
+**Balance and config tuning**
+
+- `panicChance` changed from 0.6 to 0.4 — the thief goes berserk more often than it flees (60/40 split instead of 40/60)
+- `panicDurationTicks` increased from 80 to 200 — longer flee distance when panic does trigger
+- `minGuards` increased from 2 to 4 — bases are never lightly defended
+- `lootDeliveryRadius` set to 1,000,000 (effectively unlimited) — stolen loot always reaches a base if one exists anywhere in the dimension
+- Base spacing reduced from 64 chunks to 32 chunks (~512 blocks between bases)
+- Chest Thieves now spawn in almost all overworld biomes
+- Bases destroyed by TNT or other block damage are removed from the registry — `/locate` no longer points to an empty shaft
+- `/locate structure syndicate:syndicate_base` is now reliable from world creation onwards
 
 ### 1.2.0
 
