@@ -236,7 +236,7 @@ public class ClothConfigScreenBuilder {
         cat.addEntry(e.startIntField(
                         Component.translatable("config.chest_thief.depart_delay_ticks"),
                         ct.getDepartDelayTicks())
-                .setDefaultValue(400)
+                .setDefaultValue(40)
                 .setMin(0).setMax(9600)
                 .setSaveConsumer(ct::setDepartDelayTicks)
                 .setTooltip(Component.translatable("config.chest_thief.depart_delay_ticks.tooltip"))
@@ -254,7 +254,7 @@ public class ClothConfigScreenBuilder {
         cat.addEntry(e.startIntField(
                         Component.translatable("config.chest_thief.max_age_ticks"),
                         ct.getMaxAgeTicks())
-                .setDefaultValue(48000)
+                .setDefaultValue(4800)
                 .setMin(1200).setMax(480000)
                 .setSaveConsumer(ct::setMaxAgeTicks)
                 .setTooltip(Component.translatable("config.chest_thief.max_age_ticks.tooltip"))

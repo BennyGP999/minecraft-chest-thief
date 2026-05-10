@@ -227,7 +227,7 @@ public class ChestThiefConfig {
      * Giver spilleren et vindue til at angribe inden loot er tabt.
      * 20 ticks = 1 sekund. Standard: 400 = 20 sekunder.
      */
-    private int departDelayTicks = 400;
+    private int departDelayTicks = 40;
 
     /**
      * Antal ticks tyven går væk inden den despawner (loot er "solgt på sortmarkedet").
@@ -239,7 +239,7 @@ public class ChestThiefConfig {
      * Maksimal levetid i ticks inden tyven drager bort uanset beholdning.
      * Forhindrer at tyve ophober sig i verdenen. Standard: 48000 = 2 Minecraft-dage (40 min).
      */
-    private int maxAgeTicks = 48000;
+    private int maxAgeTicks = 4800;
 
     /**
      * Om tyven afspiller en lyd mens den sniger sig væk med sit bytte.
