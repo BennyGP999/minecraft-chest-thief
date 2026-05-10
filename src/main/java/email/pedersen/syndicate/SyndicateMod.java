@@ -299,10 +299,36 @@ public class SyndicateMod implements ModInitializer {
     private static final Map<String, Long> LAST_ATTEMPT_TICK = new ConcurrentHashMap<>();
 
     /**
+     * Antal gange et givet celle-nøgle er forsøgt valideret uden succes.
+     * Nulstilles når cellen fjernes fra PENDING_VALIDATIONS (success eller hard-reject).
+     * TEMP DEBUG: bruges til at måle hvor mange retries der typisk kræves.
+     */
+    private static final Map<String, Integer> RETRY_COUNT = new ConcurrentHashMap<>();
+
+    /**
      * Antal syndikats-baser placeret siden serveropstart (nulstilles ved SERVER_STOPPED).
      * Bruges udelukkende til statistik-loglinjen der kører hvert 5. minut.
      */
     private static int basesPlacedThisSession = 0;
+
+    /**
+     * TEMP DEBUG: totalt antal chunk-load events modtaget siden serveropstart.
+     * Bruges til at beregne andelen der er kandidat-chunks.
+     */
+    private static final java.util.concurrent.atomic.AtomicInteger chunkLoadsTotal =
+            new java.util.concurrent.atomic.AtomicInteger(0);
+
+    /**
+     * TEMP DEBUG: antal chunk-load events der matchede en kandidat-chunk.
+     */
+    private static final java.util.concurrent.atomic.AtomicInteger chunkLoadsCandidate =
+            new java.util.concurrent.atomic.AtomicInteger(0);
+
+    /**
+     * TEMP DEBUG: akkumuleret tid brugt i END_SERVER_TICK-handleren det seneste sekund (ns).
+     * Nulstilles hvert 20. tick.
+     */
+    private static long tickHandlerAccumulatedNs = 0L;
 
     /**
      * Dataklasse der holder den information vi skal bruge for at (gen)forsøge en validering.
@@ -441,7 +467,11 @@ public class SyndicateMod implements ModInitializer {
             SyndicateChestTracker.clearAll();
             PENDING_VALIDATIONS.clear();
             LAST_ATTEMPT_TICK.clear();
+            RETRY_COUNT.clear();
             basesPlacedThisSession = 0;
+            chunkLoadsTotal.set(0);
+            chunkLoadsCandidate.set(0);
+            tickHandlerAccumulatedNs = 0L;
         });
 
         ServerLifecycleEvents.SERVER_STARTED.register(server -> {
@@ -456,6 +486,8 @@ public class SyndicateMod implements ModInitializer {
         // CHUNK_LOAD: registrér kandidat-chunks til validering næste tick.
         // Ingen blok-opslag her — kun O(1) beregning af celle og kandidat.
         ServerChunkEvents.CHUNK_LOAD.register((world, chunk, isNew) -> {
+            int total = chunkLoadsTotal.incrementAndGet();
+
             SyndicateConfig config = SyndicateConfig.getInstance();
             int[] cell = SyndicateBasePlacer.computeCell(chunk.getPos(), config.getBaseSpacingChunks());
             int cellX = cell[0];
@@ -463,10 +495,24 @@ public class SyndicateMod implements ModInitializer {
             ChunkPos candidate = SyndicateBasePlacer.computeCandidate(
                     cellX, cellZ, world.getSeed(),
                     config.getBaseSpacingChunks(), config.getBaseSeparationChunks());
-            if (!candidate.equals(chunk.getPos())) return; // ikke kandidaten for cellen
+            if (!candidate.equals(chunk.getPos())) {
+                // TEMP DEBUG: log chunk-load-rate hvert 100. load for at vurdere event-volumen
+                if (total % 100 == 0) {
+                    LOGGER.debug("CHUNK_LOAD rate: {} total loads, {} candidates ({} %)",
+                            total, chunkLoadsCandidate.get(),
+                            String.format("%.1f", chunkLoadsCandidate.get() * 100.0 / total));
+                }
+                return;
+            }
 
+            int candidates = chunkLoadsCandidate.incrementAndGet();
             String key = cellKey(world.dimension(), cellX, cellZ);
-            PENDING_VALIDATIONS.putIfAbsent(key, new PendingCandidate(world, candidate, cellX, cellZ));
+            boolean added = PENDING_VALIDATIONS.putIfAbsent(key,
+                    new PendingCandidate(world, candidate, cellX, cellZ)) == null;
+            LOGGER.debug("CHUNK_LOAD #{}: kandidat-chunk {} registreret for celle ({},{}) — {} kandidater af {} loads ({} % hit-rate), ny={}, pending-queue={}",
+                    total, chunk.getPos(), cellX, cellZ, candidates, total,
+                    String.format("%.2f", candidates * 100.0 / total),
+                    added, PENDING_VALIDATIONS.size());
         });
 
         // END_SERVER_TICK: forsøg ventende valideringer, én gang pr. sekund pr. kandidat.
@@ -487,10 +533,28 @@ public class SyndicateMod implements ModInitializer {
                 }
             }
 
-            if (PENDING_VALIDATIONS.isEmpty()) return;
+            if (PENDING_VALIDATIONS.isEmpty()) {
+                // TEMP DEBUG: akkumuleret tick-handler-tid pr. sekund selvom der ikke er pending
+                if (currentTick % 20 == 0 && tickHandlerAccumulatedNs > 0) {
+                    LOGGER.debug("TICK_HANDLER: ingen pending kandidater — akkumuleret tid sidste sekund: {:.1f}ms",
+                            tickHandlerAccumulatedNs / 1_000_000.0);
+                    tickHandlerAccumulatedNs = 0L;
+                }
+                return;
+            }
 
             long tTick = System.nanoTime();
             int sizeBefore = PENDING_VALIDATIONS.size();
+
+            // TEMP DEBUG: log queue-størrelse ved starten af hvert forsøg
+            LOGGER.debug("TICK_HANDLER tick#{}: {} kandidat(er) i queue, {} afventer rate-limit",
+                    currentTick, sizeBefore,
+                    PENDING_VALIDATIONS.keySet().stream()
+                            .filter(k -> currentTick - LAST_ATTEMPT_TICK.getOrDefault(k, currentTick - 20L) < 20)
+                            .count());
+
+            // Cache savedData pr. world for at undgå gentagne DataStorage-opslag inde i løkken
+            Map<ResourceKey<Level>, SyndicateSavedData> savedDataCache = new java.util.HashMap<>();
 
             PENDING_VALIDATIONS.entrySet().removeIf(entry -> {
                 String key = entry.getKey();
@@ -503,31 +567,70 @@ public class SyndicateMod implements ModInitializer {
                 if (currentTick - lastTick < 20) return false;
                 LAST_ATTEMPT_TICK.put(key, currentTick);
 
+                int attempt = RETRY_COUNT.merge(key, 1, Integer::sum);
+                LOGGER.debug("TICK_HANDLER: forsøg #{} for celle ({},{}) i {}",
+                        attempt, pc.cellX(), pc.cellZ(), pc.world().dimension());
+
+                long tAttempt = System.nanoTime();
                 boolean placed = SyndicateBasePlacer.tryPlaceBase(pc.world(), pc.candidate());
+                long attemptMs = (System.nanoTime() - tAttempt) / 1_000_000;
+
                 if (placed) {
                     basesPlacedThisSession++;
+                    LOGGER.info("TICK_HANDLER: celle ({},{}) PLACERET efter {} forsøg — forsøg tog {}ms",
+                            pc.cellX(), pc.cellZ(), attempt, attemptMs);
                     LAST_ATTEMPT_TICK.remove(key);
+                    RETRY_COUNT.remove(key);
                     return true; // fjern: base placeret ✓
                 }
 
-                // Tjek om cellen er permanent afgjort — så er der ingen grund til at prøve igen.
+                LOGGER.debug("TICK_HANDLER: celle ({},{}) blød afvisning (forsøg #{}) — {}ms brugt dette forsøg",
+                        pc.cellX(), pc.cellZ(), attempt, attemptMs);
+
+                // Tjek om cellen er permanent afgjort — hent savedData fra cache.
                 ResourceKey<Level> dimension = pc.world().dimension();
-                SyndicateSavedData savedData = SyndicateSavedData.getOrCreate(pc.world());
+                SyndicateSavedData savedData = savedDataCache.computeIfAbsent(
+                        dimension, k -> SyndicateSavedData.getOrCreate(pc.world()));
                 if (savedData.isHardRejected(pc.cellX(), pc.cellZ(), dimension)) {
+                    LOGGER.info("TICK_HANDLER: celle ({},{}) HARD-REJECTED efter {} forsøg",
+                            pc.cellX(), pc.cellZ(), attempt);
                     LAST_ATTEMPT_TICK.remove(key);
+                    RETRY_COUNT.remove(key);
                     return true; // fjern: permanent hard-rejected ✓
                 }
                 if (SyndicateBaseManager.hasBaseInCell(pc.cellX(), pc.cellZ(), dimension, config.getBaseSpacingChunks())) {
+                    LOGGER.info("TICK_HANDLER: celle ({},{}) allerede aktiv (indlæst fra disk) — fjernes efter {} forsøg",
+                            pc.cellX(), pc.cellZ(), attempt);
                     LAST_ATTEMPT_TICK.remove(key);
+                    RETRY_COUNT.remove(key);
                     return true; // fjern: base allerede aktiv (f.eks. indlæst fra disk) ✓
                 }
 
                 return false; // behold: blød afvisning — prøv igen om ~1 sekund
             });
 
-            long elapsed = (System.nanoTime() - tTick) / 1_000_000;
-            LOGGER.debug("Processed {} base candidate(s) in {}ms ({} remaining in queue)",
-                    sizeBefore, elapsed, PENDING_VALIDATIONS.size());
+            long elapsed = System.nanoTime() - tTick;
+            long elapsedMs = elapsed / 1_000_000;
+            tickHandlerAccumulatedNs += elapsed;
+
+            // Advar hvis ét tick brugte mere end 5ms på base-placering
+            if (elapsedMs >= 5) {
+                LOGGER.warn("TICK_HANDLER: {}ms brugt på base-placering dette tick — {} kandidater forsøgt, {} tilbage i queue",
+                        elapsedMs, sizeBefore - PENDING_VALIDATIONS.size(), PENDING_VALIDATIONS.size());
+            } else {
+                LOGGER.debug("TICK_HANDLER: {}ms — {} forsøgt, {} tilbage", elapsedMs,
+                        sizeBefore - PENDING_VALIDATIONS.size(), PENDING_VALIDATIONS.size());
+            }
+
+            // TEMP DEBUG: log akkumuleret tid per sekund (hvert 20. tick)
+            if (currentTick % 20 == 0) {
+                double accMs = tickHandlerAccumulatedNs / 1_000_000.0;
+                if (accMs > 1.0) {
+                    LOGGER.info("TICK_HANDLER: akkumuleret {}ms/sek brugt på base-placering — {} kandidater i queue",
+                            String.format("%.1f", accMs), PENDING_VALIDATIONS.size());
+                }
+                tickHandlerAccumulatedNs = 0L;
+            }
 
             // Periodisk statistik-log — kører hvert 5. minut (6000 ticks).
             // Viser samlet antal aktive baser i overworld og antal placeret denne session,
