@@ -286,17 +286,21 @@ public class SyndicateMod implements ModInitializer {
      *
      * Retry: bløde afvisninger (nabochunks ikke klar, hule) fjernes ikke fra sættet —
      * de forsøges automatisk igen næste gang betingelserne muligvis er opfyldt.
-     * Rate-limiting via LAST_ATTEMPT_TICK sikrer at dyre blok-scanninger (check 4)
+     * Rate-limiting via LAST_ATTEMPT_MS sikrer at dyre blok-scanninger (check 4)
      * højst kører én gang pr. sekund pr. kandidat.
      */
     private static final Map<String, PendingCandidate> PENDING_VALIDATIONS = new ConcurrentHashMap<>();
 
     /**
-     * Sidste tick en given celle sidst blev forsøgt valideret.
+     * Tidspunkt (wall-clock millisekunder) for seneste valideringsforsøg pr. celle.
      * Nøgle: samme "dimension:cellX,cellZ" som PENDING_VALIDATIONS.
-     * Bruges til at rate-limite forsøg så dyre blok-scanninger ikke kører 20×/sekund.
+     *
+     * Bruger wall-clock tid i stedet for game-ticks, fordi game-ticks kan afvikles
+     * hurtigere end realtid under server catch-up (serveren kører ticks hurtigt for
+     * at indhente efterslæb). Med tick-baseret rate-limit udløber ventetiden dermed
+     * langt hurtigere end 1 sekund, og alle kandidater kører i samme wall-clock-sekund.
      */
-    private static final Map<String, Long> LAST_ATTEMPT_TICK = new ConcurrentHashMap<>();
+    private static final Map<String, Long> LAST_ATTEMPT_MS = new ConcurrentHashMap<>();
 
     /**
      * Antal gange et givet celle-nøgle er forsøgt valideret uden succes.
@@ -466,7 +470,7 @@ public class SyndicateMod implements ModInitializer {
             SyndicateBaseManager.clearAll();
             SyndicateChestTracker.clearAll();
             PENDING_VALIDATIONS.clear();
-            LAST_ATTEMPT_TICK.clear();
+            LAST_ATTEMPT_MS.clear();
             RETRY_COUNT.clear();
             basesPlacedThisSession = 0;
             chunkLoadsTotal.set(0);
@@ -545,27 +549,37 @@ public class SyndicateMod implements ModInitializer {
 
             long tTick = System.nanoTime();
             int sizeBefore = PENDING_VALIDATIONS.size();
+            long nowMs = System.currentTimeMillis();
 
             // TEMP DEBUG: log queue-størrelse ved starten af hvert forsøg
             LOGGER.debug("TICK_HANDLER tick#{}: {} kandidat(er) i queue, {} afventer rate-limit",
                     currentTick, sizeBefore,
                     PENDING_VALIDATIONS.keySet().stream()
-                            .filter(k -> currentTick - LAST_ATTEMPT_TICK.getOrDefault(k, currentTick - 20L) < 20)
+                            .filter(k -> nowMs - LAST_ATTEMPT_MS.getOrDefault(k, 0L) < 1000)
                             .count());
 
             // Cache savedData pr. world for at undgå gentagne DataStorage-opslag inde i løkken
             Map<ResourceKey<Level>, SyndicateSavedData> savedDataCache = new java.util.HashMap<>();
 
+            // Fix 1: max én celle pr. tick — forhindrer at 17+ block-scanninger
+            // kører i samme tick og sluger 500ms+ af server-tick-budgettet.
+            java.util.concurrent.atomic.AtomicBoolean processedThisTick =
+                    new java.util.concurrent.atomic.AtomicBoolean(false);
+
             PENDING_VALIDATIONS.entrySet().removeIf(entry -> {
                 String key = entry.getKey();
                 PendingCandidate pc = entry.getValue();
 
-                // Rate-limit: forsøg højst én gang pr. sekund (20 ticks).
-                // Forhindrer at dyre blok-scanninger (check 4: 17k+ getBlockState-kald)
-                // kører 20 gange i sekundet for kandidater med bløde afvisninger.
-                long lastTick = LAST_ATTEMPT_TICK.getOrDefault(key, currentTick - 20L);
-                if (currentTick - lastTick < 20) return false;
-                LAST_ATTEMPT_TICK.put(key, currentTick);
+                // Fix 1: spring over hvis en anden celle allerede er behandlet dette tick.
+                if (processedThisTick.get()) return false;
+
+                // Fix 2: rate-limit i wall-clock tid (1 sekund), ikke game-ticks.
+                // Game-ticks afvikles hurtigere end realtid under server catch-up,
+                // så en tick-baseret rate-limit kan udløbe mange gange per sekund.
+                long lastMs = LAST_ATTEMPT_MS.getOrDefault(key, 0L);
+                if (nowMs - lastMs < 1000) return false;
+                LAST_ATTEMPT_MS.put(key, nowMs);
+                processedThisTick.set(true);
 
                 int attempt = RETRY_COUNT.merge(key, 1, Integer::sum);
                 LOGGER.debug("TICK_HANDLER: forsøg #{} for celle ({},{}) i {}",
@@ -579,7 +593,7 @@ public class SyndicateMod implements ModInitializer {
                     basesPlacedThisSession++;
                     LOGGER.info("TICK_HANDLER: celle ({},{}) PLACERET efter {} forsøg — forsøg tog {}ms",
                             pc.cellX(), pc.cellZ(), attempt, attemptMs);
-                    LAST_ATTEMPT_TICK.remove(key);
+                    LAST_ATTEMPT_MS.remove(key);
                     RETRY_COUNT.remove(key);
                     return true; // fjern: base placeret ✓
                 }
@@ -594,14 +608,14 @@ public class SyndicateMod implements ModInitializer {
                 if (savedData.isHardRejected(pc.cellX(), pc.cellZ(), dimension)) {
                     LOGGER.info("TICK_HANDLER: celle ({},{}) HARD-REJECTED efter {} forsøg",
                             pc.cellX(), pc.cellZ(), attempt);
-                    LAST_ATTEMPT_TICK.remove(key);
+                    LAST_ATTEMPT_MS.remove(key);
                     RETRY_COUNT.remove(key);
                     return true; // fjern: permanent hard-rejected ✓
                 }
                 if (SyndicateBaseManager.hasBaseInCell(pc.cellX(), pc.cellZ(), dimension, config.getBaseSpacingChunks())) {
                     LOGGER.info("TICK_HANDLER: celle ({},{}) allerede aktiv (indlæst fra disk) — fjernes efter {} forsøg",
                             pc.cellX(), pc.cellZ(), attempt);
-                    LAST_ATTEMPT_TICK.remove(key);
+                    LAST_ATTEMPT_MS.remove(key);
                     RETRY_COUNT.remove(key);
                     return true; // fjern: base allerede aktiv (f.eks. indlæst fra disk) ✓
                 }
@@ -743,7 +757,7 @@ public class SyndicateMod implements ModInitializer {
 
     /**
      * Beregner en unik streng-nøgle for en (dimension, cellX, cellZ)-kombination.
-     * Bruges som nøgle i PENDING_VALIDATIONS og LAST_ATTEMPT_TICK.
+     * Bruges som nøgle i PENDING_VALIDATIONS og LAST_ATTEMPT_MS.
      */
     private static String cellKey(ResourceKey<Level> dimension, int cellX, int cellZ) {
         return dimension.identifier() + ":" + cellX + "," + cellZ;
@@ -769,7 +783,11 @@ public class SyndicateMod implements ModInitializer {
         SyndicateSavedData savedData = SyndicateSavedData.getOrCreate(level);
         ResourceKey<Level> dimension = level.dimension();
 
-        for (int radius = 0; radius <= 3; radius++) {
+        // Forsøg kun radius 0–1 (9 celler) i stedet for 0–3 (49 celler).
+        // Fjernliggende celler tilføjes naturligt til køen via CHUNK_LOAD når
+        // spilleren bevæger sig derhen. Den massive initial-queue var årsagen til
+        // at 49 block-scanninger startede simultant ved world-load.
+        for (int radius = 0; radius <= 1; radius++) {
             for (int dx = -radius; dx <= radius; dx++) {
                 for (int dz = -radius; dz <= radius; dz++) {
                     if (Math.abs(dx) != radius && Math.abs(dz) != radius) continue;
