@@ -457,7 +457,7 @@ public class SyndicateMod implements ModInitializer {
 
             String key = cellKey(world.dimension(), cellX, cellZ);
             PENDING_VALIDATIONS.putIfAbsent(key, new PendingCandidate(world, candidate, cellX, cellZ));
-            LOGGER.debug("Kandidat-chunk {} registreret for celle ({},{}), pending-queue={}",
+            LOGGER.debug("Candidate chunk {} registered for cell ({},{}), pending queue={}",
                     chunk.getPos(), cellX, cellZ, PENDING_VALIDATIONS.size());
         });
 
@@ -519,7 +519,7 @@ public class SyndicateMod implements ModInitializer {
 
                 if (placed) {
                     basesPlacedThisSession++;
-                    LOGGER.info("TICK_HANDLER: celle ({},{}) PLACERET efter {} forsøg",
+                    LOGGER.info("TICK_HANDLER: cell ({},{}) placed after {} attempt(s)",
                             pc.cellX(), pc.cellZ(), attempt);
                     LAST_ATTEMPT_MS.remove(key);
                     RETRY_COUNT.remove(key);
@@ -531,14 +531,14 @@ public class SyndicateMod implements ModInitializer {
                 SyndicateSavedData savedData = savedDataCache.computeIfAbsent(
                         dimension, k -> SyndicateSavedData.getOrCreate(pc.world()));
                 if (savedData.isHardRejected(pc.cellX(), pc.cellZ(), dimension)) {
-                    LOGGER.info("TICK_HANDLER: celle ({},{}) HARD-REJECTED efter {} forsøg",
+                    LOGGER.info("TICK_HANDLER: cell ({},{}) hard-rejected after {} attempt(s)",
                             pc.cellX(), pc.cellZ(), attempt);
                     LAST_ATTEMPT_MS.remove(key);
                     RETRY_COUNT.remove(key);
                     return true; // fjern: permanent hard-rejected ✓
                 }
                 if (SyndicateBaseManager.hasBaseInCell(pc.cellX(), pc.cellZ(), dimension, config.getBaseSpacingChunks())) {
-                    LOGGER.info("TICK_HANDLER: celle ({},{}) allerede aktiv (indlæst fra disk) — fjernes efter {} forsøg",
+                    LOGGER.info("TICK_HANDLER: cell ({},{}) already active (loaded from disk) — removing after {} attempt(s)",
                             pc.cellX(), pc.cellZ(), attempt);
                     LAST_ATTEMPT_MS.remove(key);
                     RETRY_COUNT.remove(key);
@@ -552,10 +552,10 @@ public class SyndicateMod implements ModInitializer {
 
             // Advar hvis ét tick brugte mere end 5ms på base-placering
             if (elapsedMs >= 5) {
-                LOGGER.warn("TICK_HANDLER: {}ms brugt på base-placering dette tick — {} kandidater forsøgt, {} tilbage i queue",
+                LOGGER.warn("TICK_HANDLER: {}ms spent on base placement this tick — {} candidate(s) attempted, {} remaining in queue",
                         elapsedMs, processedCount.get(), PENDING_VALIDATIONS.size());
             } else {
-                LOGGER.debug("TICK_HANDLER: {}ms — {} forsøgt, {} tilbage", elapsedMs,
+                LOGGER.debug("TICK_HANDLER: {}ms — {} attempted, {} remaining", elapsedMs,
                         processedCount.get(), PENDING_VALIDATIONS.size());
             }
 
@@ -566,7 +566,7 @@ public class SyndicateMod implements ModInitializer {
                 ServerLevel overworld = server.overworld();
                 List<SyndicateBase> activeBases = SyndicateBaseManager.getBases(overworld.dimension());
                 int activeCount = activeBases == null ? 0 : activeBases.size();
-                LOGGER.info("[Syndicate] Aktive baser: {} | placeret denne session: {}",
+                LOGGER.info("[Syndicate] Active bases: {} | placed this session: {}",
                         activeCount, basesPlacedThisSession);
             }
 
@@ -710,7 +710,7 @@ public class SyndicateMod implements ModInitializer {
                     // hvis de nødvendige chunks ikke er loaded endnu.
                     if (SyndicateBasePlacer.tryPlaceBase(level, candidate)) {
                         basesPlacedThisSession++;
-                        LOGGER.info("Første syndikats-base placeret ved celle ({},{}) efter {} ticks — /locate klar",
+                        LOGGER.info("First syndicate base placed at cell ({},{}) after {} ticks — /locate ready",
                                 dx, dz, level.getServer().getTickCount());
                         return;
                     }
@@ -776,7 +776,7 @@ public class SyndicateMod implements ModInitializer {
         for (SyndicateBase base : toRemove) {
             SyndicateBaseManager.removeBase(base);
             savedData.removeBase(base);
-            LOGGER.info("Base ved {} er ødelagt (alle kister væk) — fjernet fra registret",
+            LOGGER.info("Base at {} destroyed (all chests gone) — removed from registry",
                     base.getPosition());
 
             // Fjern det tilhørende Xaero-waypoint hvis spilleren havde det slået til.

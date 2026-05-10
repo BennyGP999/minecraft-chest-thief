@@ -51,7 +51,7 @@ public class XaeroWaypointBridge {
         // inden Xaero har initialiseret sin session — tidligt exit uden fejl.
         XaeroMinimapSession xms = XaeroMinimapSession.getCurrentSession();
         if (xms == null) {
-            LOGGER.debug("Xaero waypoint for '{}' ved {} sprunget over — ingen aktiv session", name, pos);
+            LOGGER.debug("Xaero waypoint for '{}' at {} skipped — no active session", name, pos);
             return;
         }
 
@@ -65,7 +65,7 @@ public class XaeroWaypointBridge {
         // inden Xaero har registreret dimensionen.
         MinimapWorld world = worldManager.getCurrentWorld();
         if (world == null) {
-            LOGGER.debug("Xaero waypoint for '{}' ved {} sprunget over — ingen aktiv minimap-verden", name, pos);
+            LOGGER.debug("Xaero waypoint for '{}' at {} skipped — no active minimap world", name, pos);
             return;
         }
 
@@ -77,7 +77,7 @@ public class XaeroWaypointBridge {
         // højde, men vi aldrig ønsker to waypoints til samme bunker.
         for (Waypoint existing : waypointSet.getWaypoints()) {
             if (existing.getX() == pos.getX() && existing.getZ() == pos.getZ()) {
-                LOGGER.debug("Xaero waypoint for '{}' ved {} sprunget over — dublet fundet", name, pos);
+                LOGGER.debug("Xaero waypoint for '{}' at {} skipped — duplicate found", name, pos);
                 return;
             }
         }
@@ -96,7 +96,7 @@ public class XaeroWaypointBridge {
         );
         // add(wp, true): true = tilføj øverst i listen
         waypointSet.add(wp, true);
-        LOGGER.info("Xaero waypoint '{}' oprettet ved {}", name, pos);
+        LOGGER.info("Xaero waypoint '{}' created at {}", name, pos);
     }
 
     /**
@@ -133,7 +133,7 @@ public class XaeroWaypointBridge {
 
         for (Waypoint wp : toRemove) {
             waypointSet.remove(wp);
-            LOGGER.info("Xaero waypoint '{}' fjernet (base ødelagt ved {})", wp.getName(), pos);
+            LOGGER.info("Xaero waypoint '{}' removed (base destroyed at {})", wp.getName(), pos);
         }
     }
 }

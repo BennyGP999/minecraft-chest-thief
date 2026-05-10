@@ -334,13 +334,13 @@ public class SyndicateBasePlacer {
 
         // ── Check 1: Membership-guard ─────────────────────────────────────────
         if (SyndicateBaseManager.hasBaseInCell(cellX, cellZ, dimension, config.getBaseSpacingChunks())) {
-            SyndicateMod.LOGGER.debug("VALIDATE CHECK1 AFVIST — celle ({},{}) allerede aktiv", cellX, cellZ);
+            SyndicateMod.LOGGER.debug("VALIDATE CHECK1 REJECTED — cell ({},{}) already active", cellX, cellZ);
             return null;
         }
 
         // ── Check 2: Hard-rejection-cache ─────────────────────────────────────
         if (savedData.isHardRejected(cellX, cellZ, dimension)) {
-            SyndicateMod.LOGGER.debug("VALIDATE CHECK2 AFVIST — celle ({},{}) permanent blacklist", cellX, cellZ);
+            SyndicateMod.LOGGER.debug("VALIDATE CHECK2 REJECTED — cell ({},{}) permanently blacklisted", cellX, cellZ);
             return null;
         }
 
@@ -355,14 +355,14 @@ public class SyndicateBasePlacer {
                 || level.getFluidState(surface).is(FluidTags.WATER)) {
             savedData.addHardRejected(cellX, cellZ, dimension);
             SyndicateMod.LOGGER.debug(
-                    "VALIDATE CHECK3 AFVIST (permanent) — overflade under vand ved Y={}", surface.getY());
+                    "VALIDATE CHECK3 REJECTED (permanent) — surface below water at Y={}", surface.getY());
             return null;
         }
 
         // ── Find SHAFT_MARKER og beregn placeOrigin ───────────────────────────
         BlockPos rotatedMarkerLocalPos = findShaftMarker(template, rotation);
         if (rotatedMarkerLocalPos == null) {
-            SyndicateMod.LOGGER.error("syndicate_base.nbt mangler shaft marker (dead_tube_coral_block) — base-placering deaktiveret");
+            SyndicateMod.LOGGER.error("syndicate_base.nbt missing shaft marker (dead_tube_coral_block) — base placement disabled");
             return null;
         }
         BlockPos placeOrigin = surface.subtract(rotatedMarkerLocalPos);
@@ -380,7 +380,7 @@ public class SyndicateBasePlacer {
                 for (int cz = minCZ - 1; cz <= maxCZ + 1; cz++) {
                     if (!level.hasChunk(cx, cz)) {
                         SyndicateMod.LOGGER.debug(
-                                "VALIDATE CHUNK-GUARD AFVIST — nabochunk [{},{}] ikke loaded", cx, cz);
+                                "VALIDATE CHUNK-GUARD REJECTED — neighbor chunk [{},{}] not loaded", cx, cz);
                         return null;
                     }
                 }
@@ -411,14 +411,14 @@ public class SyndicateBasePlacer {
                     if (!isNaturalBlock(state)) {
                         savedData.addHardRejected(cellX, cellZ, dimension);
                         SyndicateMod.LOGGER.debug(
-                                "VALIDATE CHECK4 AFVIST (permanent) — ikke-naturlig blok {} ved [{},{},{}] efter {}/{} blokke",
+                                "VALIDATE CHECK4 REJECTED (permanent) — non-natural block {} at [{},{},{}] after {}/{} blocks",
                                 state.getBlock(), x, y, z, blocksScanned, volume);
                         return null;
                     }
                     if (!state.getFluidState().isEmpty()) {
                         savedData.addHardRejected(cellX, cellZ, dimension);
                         SyndicateMod.LOGGER.debug(
-                                "VALIDATE CHECK4 AFVIST (permanent) — fluid {} ved [{},{},{}] efter {}/{} blokke",
+                                "VALIDATE CHECK4 REJECTED (permanent) — fluid {} at [{},{},{}] after {}/{} blocks",
                                 state.getFluidState().getType(), x, y, z, blocksScanned, volume);
                         return null;
                     }
@@ -895,7 +895,7 @@ public class SyndicateBasePlacer {
             }
         } else {
             SyndicateMod.LOGGER.warn(
-                    "Ingen passable blok under skaktindgang {} — interiør ikke udhulet",
+                    "No passable block below shaft entrance {} — interior not carved",
                     shaftSurfacePos);
         }
 
@@ -927,7 +927,7 @@ public class SyndicateBasePlacer {
             }
         }
         SyndicateMod.LOGGER.info(
-                "Base ved {} placeret — {} kister, {} spawn-markører, {} blokke udhulet",
+                "Base at {} placed — {} chest(s), {} spawn marker(s), {} blocks carved",
                 shaftSurfacePos, chestPositions.size(), spawnPositions.size(), carvedCount);
 
         // ── Tilføj starter-loot ───────────────────────────────────────────────
