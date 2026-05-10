@@ -11,10 +11,9 @@ base {
 }
 
 repositories {
-	// Add repositories to retrieve artifacts from here.
-	// You should only use this when depending on other mods because
-	// Loom adds the essential maven repositories to download Minecraft and libraries from automatically.
-	// See https://docs.gradle.org/current/userguide/declaring_repositories.html
+	maven { url "https://maven.shedaniel.me/" }
+	maven { url "https://maven.terraformersmc.com/releases" }
+	maven { url "https://api.modrinth.com/maven" }
 }
 
 dependencies {
@@ -24,6 +23,17 @@ dependencies {
 
 	// Fabric API. This is technically optional, but you probably want it anyway.
 	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+
+	// Cloth Config + Mod Menu — soft dependencies: bundtes ikke med JAR, kræves ikke ved runtime.
+	// Aktiveres kun hvis spilleren har installeret disse mods selv.
+	// cloth-config 26.1.x og modmenu 18.x er begge bygget med mojmaps til MC 26.1.x.
+	compileOnly "me.shedaniel.cloth:cloth-config-fabric:26.1.+"
+	compileOnly "com.terraformersmc:modmenu:18.+"
+
+	// Xaero's Minimap — soft dependency til automatisk waypoint-oprettelse ved Syndicate Bases.
+	// Modrinth Maven: group=maven.modrinth, artifact=projekt-ID, version=versions-ID.
+	// Bundtes ikke i JAR — aktiveres kun hvis spilleren har installeret Xaero's Minimap selv.
+	compileOnly "maven.modrinth:1bokaNcj:iaLJOmHg"
 }
 
 processResources {

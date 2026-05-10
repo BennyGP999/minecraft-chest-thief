@@ -106,6 +106,16 @@ public class SyndicateConfig {
      */
     private double mapTraderChance = 0.25;
 
+    /**
+     * Styrer om basens position automatisk tilføjes som waypoint i Xaero's Minimap
+     * når spilleren lokaliserer basen (via /locate eller Syndikatskort).
+     *
+     * Standard: false — baserne er hemmelige og vises ikke på minimap med mindre
+     * spilleren aktivt slår denne indstilling til. Har kun effekt hvis Xaero's
+     * Minimap er installeret.
+     */
+    private boolean createXaeroWaypoints = false;
+
     // --- Loot-aflevering ---
 
     /**
@@ -141,7 +151,7 @@ public class SyndicateConfig {
      * Klemmer (clamp) værdier der er for høje, lave eller indbyrdes inkonsistente.
      * Kaldes automatisk af load() efter deserialisering fra JSON.
      */
-    private void validate() {
+    public void validate() {
         // Spacing skal være mindst 16 chunks for at give plads til separation-margin
         baseSpacingChunks = Math.max(16, baseSpacingChunks);
 
@@ -215,6 +225,34 @@ public class SyndicateConfig {
     }
 
     // -------------------------------------------------------------------------
+    // Setters (bruges af ClothConfigScreenBuilder)
+    // -------------------------------------------------------------------------
+
+    public void setBaseSpacingChunks(int v)          { baseSpacingChunks = v; }
+    public void setBaseSeparationChunks(int v)        { baseSeparationChunks = v; }
+    public void setGuardArrowDamage(double v)         { guardArrowDamage = v; }
+    public void setGuardsPerItem(double v)            { guardsPerItem = v; }
+    public void setMinGuards(int v)                   { minGuards = v; }
+    public void setMaxGuards(int v)                   { maxGuards = v; }
+    public void setStarterLootTotal(int v)            { starterLootTotal = v; }
+    public void setStarterValuableCount(int v)        { starterValuableCount = v; }
+    public void setRaidThreshold(double v)            { raidThreshold = v; }
+    public void setMapTraderChance(double v)          { mapTraderChance = v; }
+    public void setLootDeliveryRadius(double v)       { lootDeliveryRadius = v; }
+    public void setGuardRespawnIntervalTicks(int v)   { guardRespawnIntervalTicks = v; }
+    public void setGuardRespawnPlayerBuffer(int v)    { guardRespawnPlayerBuffer = v; }
+    public void setCreateXaeroWaypoints(boolean v)    { createXaeroWaypoints = v; }
+
+    /**
+     * Validerer og gemmer config til disk. Kaldes af config-skærmen ved tryk på "Gem".
+     */
+    public void save() {
+        validate();
+        JsonConfigLoader.save(this, FabricLoader.getInstance().getConfigDir()
+                .resolve("syndicate_config.json"), SyndicateMod.LOGGER);
+    }
+
+    // -------------------------------------------------------------------------
     // Getters
     // -------------------------------------------------------------------------
 
@@ -231,4 +269,5 @@ public class SyndicateConfig {
     public double getLootDeliveryRadius()       { return lootDeliveryRadius; }
     public int getGuardRespawnIntervalTicks()   { return guardRespawnIntervalTicks; }
     public int getGuardRespawnPlayerBuffer()    { return guardRespawnPlayerBuffer; }
+    public boolean isCreateXaeroWaypoints()     { return createXaeroWaypoints; }
 }

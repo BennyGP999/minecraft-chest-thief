@@ -3,5 +3,55 @@
   "item.chest_thief.chest_thief_spawn_egg": "Kistetyv Spawn-æg",
   "subtitles.chest_thief.open_chest": "Kistetyven åbner en kiste",
   "subtitles.chest_thief.steal_item": "Kistetyven stjæler et item",
-  "subtitles.chest_thief.leaving": "Kistetyven fniser"
+  "subtitles.chest_thief.leaving": "Kistetyven fniser",
+
+  "config.chest_thief.title": "Kistetyv + Syndikat",
+  "config.chest_thief.category": "Kistetyven",
+
+  "config.chest_thief.chest_interaction_interval": "Interaktionsinterval (ticks)",
+  "config.chest_thief.chest_interaction_interval.tooltip": "Ticks mellem hvert stjæl. 20 ticks = 1 sekund.",
+  "config.chest_thief.chest_detection_radius": "Detektionsradius (blokke)",
+  "config.chest_thief.chest_detection_radius.tooltip": "Maks. vandret afstand til kiste-søgning.",
+  "config.chest_thief.chest_detection_max_vertical_dist": "Maks. vertikal afstand (blokke)",
+  "config.chest_thief.chest_detection_max_vertical_dist.tooltip": "Filtrerer kister der er for langt over eller under mob'en.",
+  "config.chest_thief.max_carry_slots": "Maks. bæring (item-staks)",
+  "config.chest_thief.max_carry_slots.tooltip": "Antal staks tyven bærer. Stopper med at stjæle ved fuld beholdning.",
+
+  "config.chest_thief.spawn_weight": "Spawn-vægt",
+  "config.chest_thief.spawn_weight.tooltip": "Hyppighed ved naturlig spawn (til sammenligning: ko = 8).",
+  "config.chest_thief.spawn_min_group": "Min. gruppestørrelse ved spawn",
+  "config.chest_thief.spawn_max_group": "Maks. gruppestørrelse ved spawn",
+  "config.chest_thief.spawn_min_nearby_chests": "Min. nærliggende kister (spawn)",
+  "config.chest_thief.spawn_min_nearby_chests.tooltip": "Krævet antal kister i nærheden for naturlig spawn. 0 = ingen krav.",
+
+  "config.chest_thief.panic_chance": "Panikchance",
+  "config.chest_thief.panic_chance.tooltip": "Sandsynlighed for at flygte (1,0 − panikchance = berserkchance).",
+  "config.chest_thief.panic_duration_ticks": "Panikvarighed (ticks)",
+  "config.chest_thief.panic_duration_ticks.tooltip": "Ticks tyven sprinter væk. 200 = 10 sekunder.",
+  "config.chest_thief.leave_duration_ticks": "Forlad-varighed (ticks)",
+  "config.chest_thief.leave_duration_ticks.tooltip": "Ticks tyven vandrer væk fra kisten ved fuld beholdning.",
+  "config.chest_thief.berserk_duration_ticks": "Berserk-varighed (ticks)",
+  "config.chest_thief.berserk_speed_multiplier": "Berserk-hastighedsmultiplikator",
+  "config.chest_thief.berserk_speed_multiplier.tooltip": "ADD_MULTIPLIED_BASE på MOVEMENT_SPEED under berserk.",
+  "config.chest_thief.berserk_follow_range": "Berserk-følgeradius (blokke)",
+  "config.chest_thief.berserk_follow_range.tooltip": "Radius BerserkTargetGoal scanner efter mål i.",
+
+  "config.chest_thief.night_speed_bonus": "Nathastigheds-bonus",
+  "config.chest_thief.night_speed_bonus.tooltip": "ADD_VALUE på MOVEMENT_SPEED om natten.",
+  "config.chest_thief.stealth_min_ticks": "Usynlighed min. varighed (ticks)",
+  "config.chest_thief.stealth_max_ticks": "Usynlighed maks. varighed (ticks)",
+  "config.chest_thief.stealth_cooldown_min_ticks": "Usynlighed cooldown min. (ticks)",
+  "config.chest_thief.stealth_cooldown_max_ticks": "Usynlighed cooldown maks. (ticks)",
+  "config.chest_thief.stealth_chance": "Usynlighedschance",
+
+  "config.chest_thief.depart_delay_ticks": "Afgangsforsinkelse (ticks)",
+  "config.chest_thief.depart_delay_ticks.tooltip": "Ticks med fuld beholdning inden tyven begynder at drage bort.",
+  "config.chest_thief.depart_duration_ticks": "Afgangsvarighed (ticks)",
+  "config.chest_thief.depart_duration_ticks.tooltip": "Ticks tyven vandrer inden despawn. Loot er \"solgt\" herefter.",
+  "config.chest_thief.max_age_ticks": "Maks. levetid (ticks)",
+  "config.chest_thief.max_age_ticks.tooltip": "Tvungen afgang efter dette antal ticks. 48000 = 2 Minecraft-dage.",
+
+  "config.chest_thief.leaving_sound_min_ticks": "Afgangs-lyd interval min. (ticks)",
+  "config.chest_thief.leaving_sound_min_ticks.tooltip": "Korteste pause mellem tilfredsheds-lyde under afgang.",
+  "config.chest_thief.leaving_sound_max_ticks": "Afgangs-lyd interval maks. (ticks)"
 }

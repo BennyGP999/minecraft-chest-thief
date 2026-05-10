@@ -7,7 +7,9 @@ import email.pedersen.syndicate.config.SyndicateConfig;
 import email.pedersen.syndicate.entity.CarrotArrowEntity;
 import email.pedersen.syndicate.entity.SyndicateGuardEntity;
 import email.pedersen.syndicate.item.SyndicateMapItem;
+import net.fabricmc.api.EnvType;
 import net.fabricmc.api.ModInitializer;
+import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerChunkEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
@@ -411,6 +413,21 @@ public class SyndicateMod implements ModInitializer {
                                             .append(coords)
                                             .append(Component.literal(" (" + distFinal + " blokke væk)")),
                                         false);
+
+                                    // Opret waypoint i Xaero's Minimap hvis installeret OG spilleren
+                                    // har slået det til i config (standard: fra — baserne er hemmelige).
+                                    // EnvType.CLIENT-tjekket forhindrer eksekvering på dedicated server.
+                                    // Minecraft.getInstance().execute() skifter til klient-tråden — Xaero's
+                                    // waypoint-API må kun tilgås fra klient-tråden, ikke server-tråden.
+                                    // Lambda-syntaks (ikke method reference) sikrer at JVM'en ikke forsøger
+                                    // at loade XaeroWaypointBridge ved opstart — kun når lambda'en kaldes.
+                                    if (SyndicateConfig.getInstance().isCreateXaeroWaypoints()
+                                            && FabricLoader.getInstance().getEnvironmentType() == EnvType.CLIENT
+                                            && FabricLoader.getInstance().isModLoaded("xaerominimap")) {
+                                        net.minecraft.client.Minecraft.getInstance().execute(
+                                            () -> email.pedersen.syndicate.client.XaeroWaypointBridge
+                                                .addWaypoint(pos, "Syndicate Base"));
+                                    }
                                 }
                                 return 1;
                             })

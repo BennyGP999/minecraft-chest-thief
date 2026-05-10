@@ -272,7 +272,7 @@ public class ChestThiefConfig {
      * Uden validering ville modden opføre sig uforudsigeligt eller crashe.
      * Med validering korrigeres værdien til det nærmeste gyldige tal.
      */
-    private void validate() {
+    public void validate() {
         chestInteractionIntervalTicks = Math.max(1, chestInteractionIntervalTicks);
         chestDetectionRadius = Math.clamp(chestDetectionRadius, 1, 500);
         chestDetectionMaxVerticalDist = Math.clamp(chestDetectionMaxVerticalDist, 1, 256);
@@ -301,6 +301,43 @@ public class ChestThiefConfig {
         leavingSoundMinTicks = Math.max(1, leavingSoundMinTicks);
         leavingSoundMaxTicks = Math.max(leavingSoundMinTicks, leavingSoundMaxTicks);
         spawnMinNearbyChests = Math.max(0, spawnMinNearbyChests);
+    }
+
+    // --- Setters (bruges af ClothConfigScreenBuilder) ---
+    public void setChestInteractionIntervalTicks(int v) { chestInteractionIntervalTicks = v; }
+    public void setChestDetectionRadius(double v)       { chestDetectionRadius = v; }
+    public void setChestDetectionMaxVerticalDist(int v) { chestDetectionMaxVerticalDist = v; }
+    public void setSpawnWeight(int v)                   { spawnWeight = v; }
+    public void setSpawnMinGroup(int v)                 { spawnMinGroup = v; }
+    public void setSpawnMaxGroup(int v)                 { spawnMaxGroup = v; }
+    public void setSpawnMinNearbyChests(int v)          { spawnMinNearbyChests = v; }
+    public void setPanicChance(double v)                { panicChance = v; }
+    public void setPanicDurationTicks(int v)            { panicDurationTicks = v; }
+    public void setLeaveDurationTicks(int v)            { leaveDurationTicks = v; }
+    public void setMaxCarrySlots(int v)                 { maxCarrySlots = v; }
+    public void setBerserkDurationTicks(int v)          { berserkDurationTicks = v; }
+    public void setBerserkSpeedMultiplier(double v)     { berserkSpeedMultiplier = v; }
+    public void setBerserkFollowRange(double v)         { berserkFollowRange = v; }
+    public void setNightSpeedBonus(double v)            { nightSpeedBonus = v; }
+    public void setStealthMinTicks(int v)               { stealthMinTicks = v; }
+    public void setStealthMaxTicks(int v)               { stealthMaxTicks = v; }
+    public void setStealthCooldownMinTicks(int v)       { stealthCooldownMinTicks = v; }
+    public void setStealthCooldownMaxTicks(int v)       { stealthCooldownMaxTicks = v; }
+    public void setStealthChance(double v)              { stealthChance = v; }
+    public void setDepartDelayTicks(int v)              { departDelayTicks = v; }
+    public void setDepartDurationTicks(int v)           { departDurationTicks = v; }
+    public void setMaxAgeTicks(int v)                   { maxAgeTicks = v; }
+    public void setLeavingSoundMinTicks(int v)          { leavingSoundMinTicks = v; }
+    public void setLeavingSoundMaxTicks(int v)          { leavingSoundMaxTicks = v; }
+
+    /**
+     * Validerer og gemmer hoved-config til disk. Kaldes af config-skærmen ved tryk på "Gem".
+     * Skriver ikke item-values — dem styres i en separat fil.
+     */
+    public void save() {
+        validate();
+        JsonConfigLoader.save(this, FabricLoader.getInstance().getConfigDir()
+                .resolve("chest_thief_config.json"), ChestThiefMod.LOGGER);
     }
 
     // --- Getters ---

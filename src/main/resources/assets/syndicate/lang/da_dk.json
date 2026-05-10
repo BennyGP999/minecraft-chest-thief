@@ -3,5 +3,40 @@
   "item.syndicate.map": "Syndikatskort",
   "block.syndicate.syndicate_chest": "Syndikats-kiste",
   "item.syndicate.syndicate_chest": "Syndikats-kiste",
-  "item.syndicate.guard_spawn_egg": "Syndikats-vagt spawn egg"
+  "item.syndicate.guard_spawn_egg": "Syndikats-vagt spawn egg",
+
+  "config.syndicate.category": "Syndikat",
+
+  "config.syndicate.base_spacing_chunks": "Base-afstand (chunks)",
+  "config.syndicate.base_spacing_chunks.tooltip": "Afstand i chunks mellem gittercellers centre. Højere = sjældnere baser.",
+  "config.syndicate.base_separation_chunks": "Base-separation (chunks)",
+  "config.syndicate.base_separation_chunks.tooltip": "Min. afstand fra cellekant til base-centrum. Skal være mindre end spacing / 2.",
+
+  "config.syndicate.guard_arrow_damage": "Vagt-pileskade",
+  "config.syndicate.guard_arrow_damage.tooltip": "Baseskade pr. pil. Vanilla skeleton-pil = 2,0.",
+  "config.syndicate.guards_per_item": "Vagter pr. item",
+  "config.syndicate.guards_per_item.tooltip": "målVagter = clamp(floor(items × vagterPrItem), min, maks).",
+  "config.syndicate.min_guards": "Min. vagter",
+  "config.syndicate.min_guards.tooltip": "Minimum antal vagter, selv i en tom base.",
+  "config.syndicate.max_guards": "Maks. vagter",
+  "config.syndicate.max_guards.tooltip": "Loft på antal vagter uanset loot-mængden.",
+  "config.syndicate.guard_respawn_interval_ticks": "Vagt-respawn interval (ticks)",
+  "config.syndicate.guard_respawn_interval_ticks.tooltip": "Ticks mellem hvert respawn-forsøg. 6000 = 5 minutter.",
+  "config.syndicate.guard_respawn_player_buffer": "Vagt-respawn spillerbuffer (blokke)",
+  "config.syndicate.guard_respawn_player_buffer.tooltip": "Spiller inden for basens AABB + buffer forhindrer respawn.",
+
+  "config.syndicate.starter_loot_total": "Starter-loot i alt",
+  "config.syndicate.starter_loot_total.tooltip": "Samlede items i base-kister ved oprettelse.",
+  "config.syndicate.starter_valuable_count": "Starter-loot værdifulde items",
+  "config.syndicate.starter_valuable_count.tooltip": "Af starter-loot: antal fra prioritetslisten (prioritet 100-400).",
+  "config.syndicate.raid_threshold": "Raid-tærskel",
+  "config.syndicate.raid_threshold.tooltip": "Andel af topantal loot der trigger raid-detektion.",
+  "config.syndicate.loot_delivery_radius": "Loot-leveringsradius (blokke)",
+  "config.syndicate.loot_delivery_radius.tooltip": "Maks. afstand hvorfra en tyv afleverer loot til en base-kiste.",
+
+  "config.syndicate.map_trader_chance": "Korthandler-chance",
+  "config.syndicate.map_trader_chance.tooltip": "Sandsynlighed for at en Vandrende Handlere har Syndikatskort i sortimentet.",
+
+  "config.syndicate.create_xaero_waypoints": "Vis baser på Xaero's Minimap",
+  "config.syndicate.create_xaero_waypoints.tooltip": "Når aktiveret tilføjes et waypoint i Xaero's Minimap hver gang en base lokaliseres via /locate eller Syndikatskort. Fra som standard — baserne er hemmelige."
 }

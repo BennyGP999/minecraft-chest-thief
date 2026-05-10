@@ -3,5 +3,55 @@
   "item.chest_thief.chest_thief_spawn_egg": "Chest Thief Spawn Egg",
   "subtitles.chest_thief.open_chest": "Chest Thief opens a chest",
   "subtitles.chest_thief.steal_item": "Chest Thief steals an item",
-  "subtitles.chest_thief.leaving": "Chest Thief snickers"
+  "subtitles.chest_thief.leaving": "Chest Thief snickers",
+
+  "config.chest_thief.title": "Chest Thief + Syndicate",
+  "config.chest_thief.category": "Chest Thief",
+
+  "config.chest_thief.chest_interaction_interval": "Chest Interaction Interval (ticks)",
+  "config.chest_thief.chest_interaction_interval.tooltip": "Ticks between each steal action. 20 ticks = 1 second.",
+  "config.chest_thief.chest_detection_radius": "Detection Radius (blocks)",
+  "config.chest_thief.chest_detection_radius.tooltip": "Max horizontal distance for chest searching.",
+  "config.chest_thief.chest_detection_max_vertical_dist": "Max Vertical Distance (blocks)",
+  "config.chest_thief.chest_detection_max_vertical_dist.tooltip": "Filters out chests too far above or below the mob.",
+  "config.chest_thief.max_carry_slots": "Max Carry Slots",
+  "config.chest_thief.max_carry_slots.tooltip": "Number of item stacks the thief carries. Stops stealing when full.",
+
+  "config.chest_thief.spawn_weight": "Spawn Weight",
+  "config.chest_thief.spawn_weight.tooltip": "Natural spawn frequency (for comparison: cow = 8).",
+  "config.chest_thief.spawn_min_group": "Min. Group Size (spawn)",
+  "config.chest_thief.spawn_max_group": "Max. Group Size (spawn)",
+  "config.chest_thief.spawn_min_nearby_chests": "Min. Nearby Chests (spawn)",
+  "config.chest_thief.spawn_min_nearby_chests.tooltip": "Required nearby chests for natural spawn. 0 = no requirement.",
+
+  "config.chest_thief.panic_chance": "Panic Chance",
+  "config.chest_thief.panic_chance.tooltip": "Probability of fleeing when attacked (1.0 − panic chance = berserk chance).",
+  "config.chest_thief.panic_duration_ticks": "Panic Duration (ticks)",
+  "config.chest_thief.panic_duration_ticks.tooltip": "Ticks the thief sprints away. 200 = 10 seconds.",
+  "config.chest_thief.leave_duration_ticks": "Leave Duration (ticks)",
+  "config.chest_thief.leave_duration_ticks.tooltip": "Ticks the thief wanders away from the chest when inventory is full.",
+  "config.chest_thief.berserk_duration_ticks": "Berserk Duration (ticks)",
+  "config.chest_thief.berserk_speed_multiplier": "Berserk Speed Multiplier",
+  "config.chest_thief.berserk_speed_multiplier.tooltip": "ADD_MULTIPLIED_BASE on MOVEMENT_SPEED during berserk.",
+  "config.chest_thief.berserk_follow_range": "Berserk Follow Range (blocks)",
+  "config.chest_thief.berserk_follow_range.tooltip": "Radius BerserkTargetGoal scans for targets in.",
+
+  "config.chest_thief.night_speed_bonus": "Night Speed Bonus",
+  "config.chest_thief.night_speed_bonus.tooltip": "ADD_VALUE on MOVEMENT_SPEED at night.",
+  "config.chest_thief.stealth_min_ticks": "Stealth Min. Duration (ticks)",
+  "config.chest_thief.stealth_max_ticks": "Stealth Max. Duration (ticks)",
+  "config.chest_thief.stealth_cooldown_min_ticks": "Stealth Cooldown Min. (ticks)",
+  "config.chest_thief.stealth_cooldown_max_ticks": "Stealth Cooldown Max. (ticks)",
+  "config.chest_thief.stealth_chance": "Stealth Chance",
+
+  "config.chest_thief.depart_delay_ticks": "Departure Delay (ticks)",
+  "config.chest_thief.depart_delay_ticks.tooltip": "Ticks with full inventory before the thief starts departing.",
+  "config.chest_thief.depart_duration_ticks": "Departure Duration (ticks)",
+  "config.chest_thief.depart_duration_ticks.tooltip": "Ticks the thief wanders before despawning. Loot is \"sold\" afterwards.",
+  "config.chest_thief.max_age_ticks": "Max Lifetime (ticks)",
+  "config.chest_thief.max_age_ticks.tooltip": "Forced departure after this many ticks. 48000 = 2 Minecraft days.",
+
+  "config.chest_thief.leaving_sound_min_ticks": "Departure Sound Min. Interval (ticks)",
+  "config.chest_thief.leaving_sound_min_ticks.tooltip": "Shortest pause between satisfaction sounds during departure.",
+  "config.chest_thief.leaving_sound_max_ticks": "Departure Sound Max. Interval (ticks)"
 }

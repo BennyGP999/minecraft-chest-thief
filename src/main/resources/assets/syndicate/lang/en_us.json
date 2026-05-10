@@ -3,5 +3,40 @@
   "item.syndicate.map": "Syndicate Map",
   "block.syndicate.syndicate_chest": "Syndicate Chest",
   "item.syndicate.syndicate_chest": "Syndicate Chest",
-  "item.syndicate.guard_spawn_egg": "Syndicate Guard Spawn Egg"
+  "item.syndicate.guard_spawn_egg": "Syndicate Guard Spawn Egg",
+
+  "config.syndicate.category": "Syndicate",
+
+  "config.syndicate.base_spacing_chunks": "Base Spacing (chunks)",
+  "config.syndicate.base_spacing_chunks.tooltip": "Distance in chunks between grid cell centres. Higher = rarer bases.",
+  "config.syndicate.base_separation_chunks": "Base Separation (chunks)",
+  "config.syndicate.base_separation_chunks.tooltip": "Min. distance from cell edge to base centre. Must be less than spacing / 2.",
+
+  "config.syndicate.guard_arrow_damage": "Guard Arrow Damage",
+  "config.syndicate.guard_arrow_damage.tooltip": "Base damage per arrow. Vanilla skeleton arrow = 2.0.",
+  "config.syndicate.guards_per_item": "Guards Per Item",
+  "config.syndicate.guards_per_item.tooltip": "targetGuards = clamp(floor(items x guardsPerItem), min, max).",
+  "config.syndicate.min_guards": "Min. Guards",
+  "config.syndicate.min_guards.tooltip": "Minimum number of guards, even in an empty base.",
+  "config.syndicate.max_guards": "Max. Guards",
+  "config.syndicate.max_guards.tooltip": "Cap on guard count regardless of loot amount.",
+  "config.syndicate.guard_respawn_interval_ticks": "Guard Respawn Interval (ticks)",
+  "config.syndicate.guard_respawn_interval_ticks.tooltip": "Ticks between each respawn attempt. 6000 = 5 minutes.",
+  "config.syndicate.guard_respawn_player_buffer": "Guard Respawn Player Buffer (blocks)",
+  "config.syndicate.guard_respawn_player_buffer.tooltip": "Player within base AABB + buffer prevents respawn.",
+
+  "config.syndicate.starter_loot_total": "Starter Loot Total",
+  "config.syndicate.starter_loot_total.tooltip": "Total items placed in base chests at creation.",
+  "config.syndicate.starter_valuable_count": "Starter Loot Valuable Items",
+  "config.syndicate.starter_valuable_count.tooltip": "Of starterLootTotal: number from the priority list (priority 100-400).",
+  "config.syndicate.raid_threshold": "Raid Threshold",
+  "config.syndicate.raid_threshold.tooltip": "Fraction of peak loot count that triggers raid detection.",
+  "config.syndicate.loot_delivery_radius": "Loot Delivery Radius (blocks)",
+  "config.syndicate.loot_delivery_radius.tooltip": "Max distance from which a thief delivers loot to a base chest.",
+
+  "config.syndicate.map_trader_chance": "Map Trader Chance",
+  "config.syndicate.map_trader_chance.tooltip": "Probability that a Wandering Trader carries a Syndicate Map.",
+
+  "config.syndicate.create_xaero_waypoints": "Show Bases on Xaero's Minimap",
+  "config.syndicate.create_xaero_waypoints.tooltip": "When enabled, a waypoint is added to Xaero's Minimap each time a base is located via /locate or the Syndicate Map. Disabled by default — bases are secret."
 }

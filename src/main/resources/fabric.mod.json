@@ -22,6 +22,9 @@
     "client": [
       "email.pedersen.chestthief.client.ChestThiefModClient",
       "email.pedersen.syndicate.client.SyndicateModClient"
+    ],
+    "modmenu": [
+      "email.pedersen.config.ClothConfigIntegration"
     ]
   },
   "mixins": [
@@ -33,5 +36,10 @@
     "minecraft": "~26.1",
     "java": ">=25",
     "fabric-api": "*"
+  },
+  "suggests": {
+    "cloth-config": "*",
+    "modmenu": "*",
+    "xaerominimap": "*"
   }
 }

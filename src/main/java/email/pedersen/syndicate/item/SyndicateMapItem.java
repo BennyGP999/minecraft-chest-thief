@@ -3,6 +3,9 @@ package email.pedersen.syndicate.item;
 import email.pedersen.syndicate.SyndicateBase;
 import email.pedersen.syndicate.SyndicateBaseManager;
 import email.pedersen.syndicate.SyndicateMod;
+import email.pedersen.syndicate.config.SyndicateConfig;
+import net.fabricmc.api.EnvType;
+import net.fabricmc.loader.api.FabricLoader;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.InteractionHand;
@@ -87,6 +90,16 @@ public class SyndicateMapItem extends Item {
         }
 
         BlockPos basePos = base.getPosition();
+
+        // Opret waypoint i Xaero's Minimap hvis installeret OG spilleren har slået det til i config.
+        // Standard er fra — baserne er hemmelige og vises ikke på minimap uden aktivt tilvalg.
+        if (SyndicateConfig.getInstance().isCreateXaeroWaypoints()
+                && FabricLoader.getInstance().getEnvironmentType() == EnvType.CLIENT
+                && FabricLoader.getInstance().isModLoaded("xaerominimap")) {
+            net.minecraft.client.Minecraft.getInstance().execute(
+                () -> email.pedersen.syndicate.client.XaeroWaypointBridge
+                    .addWaypoint(basePos, "Syndicate Base"));
+        }
 
         // Opret et nyt Minecraft-kort centreret på basens overfladeindgang.
         // trackingPosition=true:  spillerens position vises som markør på kortet.
