@@ -54,7 +54,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Queue;
 import java.util.Set;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Beregner og validerer placeringen af en syndikats-base i verdenen.
@@ -330,33 +329,24 @@ public class SyndicateBasePlacer {
     public static BlockPos validate(ServerLevel level, int cellX, int cellZ,
                                      ChunkPos candidate, StructureTemplate template,
                                      Rotation rotation, SyndicateSavedData savedData) {
-        long t0 = System.nanoTime();
-        SyndicateMod.LOGGER.debug("VALIDATE start: chunk={} celle=({},{}) rotation={}",
-                candidate, cellX, cellZ, rotation);
-
         SyndicateConfig config = SyndicateConfig.getInstance();
         ResourceKey<Level> dimension = level.dimension();
 
         // ── Check 1: Membership-guard ─────────────────────────────────────────
-        long t1 = System.nanoTime();
         if (SyndicateBaseManager.hasBaseInCell(cellX, cellZ, dimension, config.getBaseSpacingChunks())) {
-            SyndicateMod.LOGGER.debug("VALIDATE [{}ms] CHECK1 AFVIST — celle allerede aktiv",
-                    ms(t0));
+            SyndicateMod.LOGGER.debug("VALIDATE CHECK1 AFVIST — celle ({},{}) allerede aktiv", cellX, cellZ);
             return null;
         }
 
         // ── Check 2: Hard-rejection-cache ─────────────────────────────────────
-        long t2 = System.nanoTime();
         if (savedData.isHardRejected(cellX, cellZ, dimension)) {
-            SyndicateMod.LOGGER.debug("VALIDATE [{}ms] CHECK2 AFVIST — permanent blacklist (check1={}µs check2={}µs)",
-                    ms(t0), us(t1), us(t2));
+            SyndicateMod.LOGGER.debug("VALIDATE CHECK2 AFVIST — celle ({},{}) permanent blacklist", cellX, cellZ);
             return null;
         }
 
         // ── Check 3: Hav-check ────────────────────────────────────────────────
         // findGroundSurface() scanner nedad forbi trætoppe og vegetation
         // og returnerer luftblokken over det første solide terræn-lag.
-        long t3a = System.nanoTime();
         BlockPos candidateBlock = candidate.getMiddleBlockPosition(64);
         BlockPos surface = findGroundSurface(level, candidateBlock);
 
@@ -365,15 +355,11 @@ public class SyndicateBasePlacer {
                 || level.getFluidState(surface).is(FluidTags.WATER)) {
             savedData.addHardRejected(cellX, cellZ, dimension);
             SyndicateMod.LOGGER.debug(
-                    "VALIDATE [{}ms] CHECK3 AFVIST (permanent) — overflade under vand ved Y={} (findGround={}µs)",
-                    ms(t0), surface.getY(), us(t3a));
+                    "VALIDATE CHECK3 AFVIST (permanent) — overflade under vand ved Y={}", surface.getY());
             return null;
         }
-        SyndicateMod.LOGGER.debug("VALIDATE [{}ms] CHECK3 OK — surface Y={} (findGround={}µs, check1={}µs, check2={}µs)",
-                ms(t0), surface.getY(), us(t3a), us(t1), us(t2));
 
         // ── Find SHAFT_MARKER og beregn placeOrigin ───────────────────────────
-        long tMarker = System.nanoTime();
         BlockPos rotatedMarkerLocalPos = findShaftMarker(template, rotation);
         if (rotatedMarkerLocalPos == null) {
             SyndicateMod.LOGGER.error("syndicate_base.nbt mangler shaft marker (dead_tube_coral_block) — base-placering deaktiveret");
@@ -382,38 +368,23 @@ public class SyndicateBasePlacer {
         BlockPos placeOrigin = surface.subtract(rotatedMarkerLocalPos);
 
         // ── Beregn AABB ───────────────────────────────────────────────────────
-        long tAABB = System.nanoTime();
         AABB footprint = computeFootprintAABB(placeOrigin, template, rotation);
-        int volX = (int)(footprint.maxX - footprint.minX);
-        int volY = (int)(footprint.maxY - footprint.minY);
-        int volZ = (int)(footprint.maxZ - footprint.minZ);
-        int volume = volX * volY * volZ;
-        SyndicateMod.LOGGER.debug(
-                "VALIDATE [{}ms] AABB beregnet: {}×{}×{}={} blokke, origin={} (marker={}µs, aabb={}µs)",
-                ms(t0), volX, volY, volZ, volume, placeOrigin, us(tMarker), us(tAABB));
 
         // ── Chunk-guard ───────────────────────────────────────────────────────
-        long tCG = System.nanoTime();
         {
             int minCX = ((int) footprint.minX) >> 4;
             int maxCX = ((int) footprint.maxX) >> 4;
             int minCZ = ((int) footprint.minZ) >> 4;
             int maxCZ = ((int) footprint.maxZ) >> 4;
-            int chunksChecked = 0;
             for (int cx = minCX - 1; cx <= maxCX + 1; cx++) {
                 for (int cz = minCZ - 1; cz <= maxCZ + 1; cz++) {
-                    chunksChecked++;
                     if (!level.hasChunk(cx, cz)) {
                         SyndicateMod.LOGGER.debug(
-                                "VALIDATE [{}ms] CHUNK-GUARD AFVIST — nabochunk [{},{}] ikke loaded ({}/{} chunks tjekket, chunkGuard={}µs)",
-                                ms(t0), cx, cz, chunksChecked,
-                                (maxCX - minCX + 3) * (maxCZ - minCZ + 3), us(tCG));
+                                "VALIDATE CHUNK-GUARD AFVIST — nabochunk [{},{}] ikke loaded", cx, cz);
                         return null;
                     }
                 }
             }
-            SyndicateMod.LOGGER.debug("VALIDATE [{}ms] CHUNK-GUARD OK — {} chunks tjekket ({}µs)",
-                    ms(t0), chunksChecked, us(tCG));
         }
 
         // ── Check 4: Ikke-naturlige blokke ────────────────────────────────────
@@ -423,50 +394,38 @@ public class SyndicateBasePlacer {
         int maxY = (int) footprint.maxY;
         int minZ = (int) footprint.minZ;
         int maxZ = (int) footprint.maxZ;
+        int volume = (maxX - minX) * (maxY - minY) * (maxZ - minZ);
         int blocksScanned = 0;
-        long t4 = System.nanoTime();
         BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
 
-        for (int x = minX; x <= maxX; x++) {
-            for (int y = minY; y <= maxY; y++) {
+        // Scanrækkefølge: Y fra max (terrænoverfladen) ned mod min (dybest under jord).
+        // Spillerbyggeri og vanilla-strukturer (landsbyer, mineshafts) forekommer oftest
+        // på eller nær overfladen — top-down scanning finder disse efter ~550 blokke (ét Y-lag)
+        // i stedet for sidst efter ~16.000 blokke med den tidligere bottom-up rækkefølge.
+        // For naturligt terræn uden fremmedblokke scannes alle blokke uanset retning.
+        for (int y = maxY; y >= minY; y--) {
+            for (int x = minX; x <= maxX; x++) {
                 for (int z = minZ; z <= maxZ; z++) {
                     blocksScanned++;
                     BlockState state = level.getBlockState(mutable.set(x, y, z));
                     if (!isNaturalBlock(state)) {
                         savedData.addHardRejected(cellX, cellZ, dimension);
                         SyndicateMod.LOGGER.debug(
-                                "VALIDATE [{}ms] CHECK4 AFVIST (permanent) — ikke-naturlig blok {} ved [{},{},{}] efter {}/{} blokke ({} blokke/ms, scan={}ms, total={}ms)",
-                                ms(t0), state.getBlock(), x, y, z, blocksScanned, volume,
-                                blocksScanned > 0 ? String.format("%.0f", blocksScanned / Math.max(1.0, (System.nanoTime() - t4) / 1_000_000.0)) : "?",
-                                ms(t4), ms(t0));
+                                "VALIDATE CHECK4 AFVIST (permanent) — ikke-naturlig blok {} ved [{},{},{}] efter {}/{} blokke",
+                                state.getBlock(), x, y, z, blocksScanned, volume);
                         return null;
                     }
                     if (!state.getFluidState().isEmpty()) {
                         savedData.addHardRejected(cellX, cellZ, dimension);
                         SyndicateMod.LOGGER.debug(
-                                "VALIDATE [{}ms] CHECK4 AFVIST (permanent) — fluid {} ved [{},{},{}] efter {}/{} blokke (scan={}ms, total={}ms)",
-                                ms(t0), state.getFluidState().getType(), x, y, z, blocksScanned, volume,
-                                ms(t4), ms(t0));
+                                "VALIDATE CHECK4 AFVIST (permanent) — fluid {} ved [{},{},{}] efter {}/{} blokke",
+                                state.getFluidState().getType(), x, y, z, blocksScanned, volume);
                         return null;
-                    }
-                    // TEMP DEBUG: fremdriftslog hvert 2500. blok så vi kan se om det hænger
-                    if (blocksScanned % 2500 == 0) {
-                        SyndicateMod.LOGGER.debug(
-                                "VALIDATE CHECK4 fremskridt: {}/{} blokke ({}%) — {}ms hidtil",
-                                blocksScanned, volume,
-                                String.format("%.1f", blocksScanned * 100.0 / volume), ms(t4));
                     }
                 }
             }
         }
-        double blocksPerMs = blocksScanned / Math.max(1.0, (System.nanoTime() - t4) / 1_000_000.0);
-        SyndicateMod.LOGGER.debug(
-                "VALIDATE [{}ms] CHECK4 OK — {} blokke scannet på {}ms ({} blokke/ms)",
-                ms(t0), blocksScanned, ms(t4), String.format("%.0f", blocksPerMs));
 
-        SyndicateMod.LOGGER.info(
-                "VALIDATE GODKENDT — origin={} | check1={}µs check2={}µs findGround={}µs marker={}µs aabb={}µs chunkGuard={}µs scan={}ms TOTAL={}ms",
-                placeOrigin, us(t1), us(t2), us(t3a), us(tMarker), us(tAABB), us(tCG), ms(t4), ms(t0));
         return placeOrigin;
     }
 
@@ -548,21 +507,6 @@ public class SyndicateBasePlacer {
                 placeOrigin.getX() + offMinX, placeOrigin.getY(),      placeOrigin.getZ() + offMinZ,
                 placeOrigin.getX() + offMaxX, placeOrigin.getY() + sy, placeOrigin.getZ() + offMaxZ
         );
-    }
-
-    /** TEMP DEBUG: konverterer nanoTime-delta til millisekunder med én decimal (fra start til nu). */
-    private static String ms(long startNano) {
-        return String.format("%.1f", (System.nanoTime() - startNano) / 1_000_000.0);
-    }
-
-    /** TEMP DEBUG: konverterer delta mellem to nanoTime-stamps til millisekunder med én decimal. */
-    private static String ms(long startNano, long endNano) {
-        return String.format("%.1f", (endNano - startNano) / 1_000_000.0);
-    }
-
-    /** TEMP DEBUG: konverterer nanoTime-delta til mikrosekunder (heltal). */
-    private static long us(long startNano) {
-        return (System.nanoTime() - startNano) / 1_000;
     }
 
     /**
@@ -849,8 +793,6 @@ public class SyndicateBasePlacer {
         }
         SyndicateMod.LOGGER.info("Terrain validation passed — origin={}, rotation={}", placeOrigin, rotation);
 
-        long tPlacement = System.nanoTime();
-
         // ── Beregn AABB og skakt-position FØR stamping ───────────────────────
         BlockPos markerLocalPos = findShaftMarker(template, rotation); // ikke null — validate() tjekkede det
         assert markerLocalPos != null;
@@ -865,13 +807,6 @@ public class SyndicateBasePlacer {
         int maxZ = (int) bounds.maxZ;
 
         // ── Stamp strukturen (kun solide blokke) ─────────────────────────────
-        // En inline StructureProcessor springer alle luftblokke over under stamping.
-        // AtomicInteger bruges fordi anonymous inner class kun kan tilgå effectively-final variabler —
-        // vi kan ikke bruge en almindelig int-tæller der opdateres inde i processBlock.
-        AtomicInteger processorCalled = new AtomicInteger(0);
-        AtomicInteger processorSkippedAir = new AtomicInteger(0);
-        AtomicInteger processorPlaced = new AtomicInteger(0);
-
         // passableNonAirInTemplate: ikke-luft-blokke i templaten der IKKE er solide —
         // f.eks. stiger, trapdoors, torches, skilte. Bruges til flood-fill spredning
         // så skakten kan gennemkrydses selv med en stige på væggen.
@@ -886,9 +821,7 @@ public class SyndicateBasePlacer {
                     StructureTemplate.StructureBlockInfo original,
                     StructureTemplate.StructureBlockInfo modified,
                     StructurePlaceSettings placeSettings) {
-                processorCalled.incrementAndGet();
                 if (modified.state().isAir()) {
-                    processorSkippedAir.incrementAndGet();
                     return null; // spring luftblok over
                 }
                 // Ikke-solid blok (stiger, trapdoors, fakler, TRIPWIRE, TRIPWIRE_HOOK m.fl.) —
@@ -898,7 +831,6 @@ public class SyndicateBasePlacer {
                 if (!modified.state().isSolid()) {
                     passableNonAirInTemplate.add(modified.pos());
                 }
-                processorPlaced.incrementAndGet();
                 return modified;
             }
             @Override
@@ -912,26 +844,17 @@ public class SyndicateBasePlacer {
                 .setIgnoreEntities(true)
                 .addProcessor(skipAirProcessor);
 
-        long tStamp = System.nanoTime();
         template.placeInWorld(level, placeOrigin, placeOrigin, settings, level.getRandom(),
                 Block.UPDATE_CLIENTS);
-        long tStampDone = System.nanoTime();
-
-        SyndicateMod.LOGGER.info(
-                "PLACE stamp: {}ms — {} blokke behandlet ({} luft sprunget over, {} placeret, {} passable non-luft)",
-                ms(tStamp), processorCalled.get(), processorSkippedAir.get(),
-                processorPlaced.get(), passableNonAirInTemplate.size());
 
         // ── Fjern SHAFT_MARKER ───────────────────────────────────────────────
         level.setBlock(shaftSurfacePos, Blocks.AIR.defaultBlockState(), Block.UPDATE_CLIENTS);
 
         // ── Udhul interiøret under overfladen ────────────────────────────────
-        long tFloodSetup = System.nanoTime();
         StructurePlaceSettings filterSettings = new StructurePlaceSettings().setRotation(rotation);
         int surfaceCutoffY = shaftSurfacePos.getY();
 
         int carvedCount = 0;
-        int skippedAboveSurface = 0;
 
         // Byg opslags-set over luftblokke i templaten (kun disse carves).
         Set<BlockPos> allAirInTemplate = new HashSet<>();
@@ -944,12 +867,7 @@ public class SyndicateBasePlacer {
         Set<BlockPos> floodPassable = new HashSet<>(allAirInTemplate);
         floodPassable.addAll(passableNonAirInTemplate);
 
-        SyndicateMod.LOGGER.info(
-                "PLACE floodSetup: {}ms — filterBlocks gav {} luft + {} passable non-luft = {} i flood-sæt",
-                ms(tFloodSetup), allAirInTemplate.size(), passableNonAirInTemplate.size(), floodPassable.size());
-
         // Find flood-fill startpunkt: scan nedad fra SHAFT_MARKER til første passable blok.
-        long tFloodTraversal = System.nanoTime();
         BlockPos floodStart = null;
         for (int dy = 1; dy <= template.getSize(rotation).getY(); dy++) {
             BlockPos floodCandidate = shaftSurfacePos.below(dy);
@@ -975,37 +893,22 @@ public class SyndicateBasePlacer {
                     }
                 }
             }
-            SyndicateMod.LOGGER.info(
-                    "PLACE floodTraversal: {}ms — startpunkt={}, {} af {} luftblokke nået fra skakt",
-                    ms(tFloodTraversal), floodStart, toCarve.size(), allAirInTemplate.size());
         } else {
             SyndicateMod.LOGGER.warn(
-                    "PLACE floodTraversal: ingen passable blok under skaktindgang {} — interiør udhulet ikke",
+                    "Ingen passable blok under skaktindgang {} — interiør ikke udhulet",
                     shaftSurfacePos);
         }
 
         // Udhul kun positioner der er: (a) flood-reachable, (b) luft i template, (c) under overfladen
-        long tCarve = System.nanoTime();
         for (BlockPos worldPos : toCarve) {
             if (!allAirInTemplate.contains(worldPos)) continue;
             if (worldPos.getY() < surfaceCutoffY) {
                 level.setBlock(worldPos, Blocks.AIR.defaultBlockState(), Block.UPDATE_CLIENTS);
                 carvedCount++;
-            } else {
-                skippedAboveSurface++;
             }
         }
-        long tCarveDone = System.nanoTime();
-
-        SyndicateMod.LOGGER.info(
-                "PLACE carve: {}ms — {} blokke fjernet ({} setBlock-kald à ~{}µs gns), {} sprunget over (over cutoff Y={})",
-                ms(tCarve), carvedCount,
-                carvedCount,
-                carvedCount > 0 ? (tCarveDone - tCarve) / 1_000 / carvedCount : 0,
-                skippedAboveSurface, surfaceCutoffY);
 
         // ── Autodiscovery: scan AABB for kister og spawn-markører ─────────────
-        long tDisc = System.nanoTime();
         List<BlockPos> chestPositions = new ArrayList<>();
         List<BlockPos> spawnPositions = new ArrayList<>();
         BlockPos.MutableBlockPos discMutable = new BlockPos.MutableBlockPos();
@@ -1024,15 +927,12 @@ public class SyndicateBasePlacer {
             }
         }
         SyndicateMod.LOGGER.info(
-                "PLACE autodiscovery: {}ms — {} kister, {} spawn-markører fundet i {}×{}×{}={} blokke AABB",
-                ms(tDisc), chestPositions.size(), spawnPositions.size(),
-                maxX - minX, maxY - minY, maxZ - minZ, (maxX - minX) * (maxY - minY) * (maxZ - minZ));
+                "Base ved {} placeret — {} kister, {} spawn-markører, {} blokke udhulet",
+                shaftSurfacePos, chestPositions.size(), spawnPositions.size(), carvedCount);
 
         // ── Tilføj starter-loot ───────────────────────────────────────────────
-        long tLoot = System.nanoTime();
         int totalStarterItems = fillStarterLoot(level, chestPositions,
                 config.getStarterLootTotal(), config.getStarterValuableCount());
-        SyndicateMod.LOGGER.info("PLACE fillLoot: {}ms — {} items placeret", ms(tLoot), totalStarterItems);
 
         // ── Opret og registrér basen ──────────────────────────────────────────
         SyndicateBase base = new SyndicateBase(
@@ -1043,14 +943,7 @@ public class SyndicateBasePlacer {
         SyndicateBaseManager.addBase(base);
         savedData.addBase(base);
 
-        long tGuards = System.nanoTime();
         SyndicateBaseManager.spawnGuardsIfNeeded(level, base);
-        SyndicateMod.LOGGER.info("PLACE spawnGuards: {}ms", ms(tGuards));
-
-        SyndicateMod.LOGGER.info(
-                "PLACE FÆRDIG — total={}ms | stamp={}ms floodSetup={}ms floodTraversal={}ms carve={}ms autodiscovery={}ms loot={}ms guards={}ms",
-                ms(tPlacement), ms(tStamp, tStampDone), ms(tFloodSetup), ms(tFloodTraversal),
-                ms(tCarve, tCarveDone), ms(tDisc), ms(tLoot), ms(tGuards));
 
         return true;
     }
